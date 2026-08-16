@@ -62,10 +62,10 @@ object TargetsCatalog {
                             flashFreq = b.optString("flash_freq", "80m"),
                             psram = b.optString("psram", ""),
                             partitionNvs = b.optString("partition_nvs", ""),
-                            hardwareId = b.optString("hardware_id", null),
-                            factoryManifestUrl = b.optString("factory_manifest_url", null),
-                            factoryManifestSignatureUrl = b.optString("factory_manifest_signature_url", null),
-                            offlineFactorySha256 = b.optString("offline_factory_sha256", null),
+                            hardwareId = if (b.has("hardware_id")) b.getString("hardware_id") else null,
+                            factoryManifestUrl = if (b.has("factory_manifest_url")) b.getString("factory_manifest_url") else null,
+                            factoryManifestSignatureUrl = if (b.has("factory_manifest_signature_url")) b.getString("factory_manifest_signature_url") else null,
+                            offlineFactorySha256 = if (b.has("offline_factory_sha256")) b.getString("offline_factory_sha256") else null,
                             enabled = b.optBoolean("enabled", false)
                         )
                     )

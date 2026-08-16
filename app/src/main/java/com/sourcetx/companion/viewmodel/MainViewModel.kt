@@ -1,127 +1,97 @@
 package com.sourcetx.companion.viewmodel
 
 import android.app.Application
-import android.net.Uri
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
+import com.sourcetx.companion.BuildConfig
+import com.sourcetx.companion.firmware.FirmwareRepository
 import com.sourcetx.companion.protocol.HardwareCatalog
 import com.sourcetx.companion.protocol.ModelTransferProtocol
 import com.sourcetx.companion.protocol.ParseResult
-import com.sourcetx.companion.protocol.SourceTxModelEnvelope
 import com.sourcetx.companion.protocol.TargetsCatalog
 import com.sourcetx.companion.updater.AppReleaseInfo
 import com.sourcetx.companion.updater.AppUpdateManager
 import com.sourcetx.companion.usb.Esp32BootloaderClient
 import com.sourcetx.companion.usb.SourceTxSerialClient
 import com.sourcetx.companion.usb.SourceTxUsbManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-enum class AppScreen {
-    HOME,
-    INSTALL,
-    UPDATE,
-    BACKUP,
-    RESTORE
-}
+enum class AppScreen { HOME, INSTALL, UPDATE, BACKUP, RESTORE }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
-
-    val currentAppVersion = "0.1.5"
+    val currentAppVersion: String = BuildConfig.VERSION_NAME
     val usbManager = SourceTxUsbManager(application)
+    private val firmwareRepository = FirmwareRepository(currentAppVersion)
+    private val preferences = application.getSharedPreferences("companion_preferences", 0)
 
     private val _currentScreen = MutableStateFlow(AppScreen.HOME)
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
-
-    private val _isDarkTheme = MutableStateFlow(true)
+    private val _isDarkTheme = MutableStateFlow(preferences.getBoolean("dark_theme", true))
     val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
-
     private val _catalog = MutableStateFlow<HardwareCatalog?>(null)
     val catalog: StateFlow<HardwareCatalog?> = _catalog.asStateFlow()
 
-    // Self-Updater state
     private val _isCheckingAppUpdate = MutableStateFlow(false)
-    val isCheckingAppUpdate: StateFlow<Boolean> = _isCheckingAppUpdate.asStateFlow()
-
+    val isCheckingAppUpdate = _isCheckingAppUpdate.asStateFlow()
     private val _appReleaseInfo = MutableStateFlow<AppReleaseInfo?>(null)
-    val appReleaseInfo: StateFlow<AppReleaseInfo?> = _appReleaseInfo.asStateFlow()
-
+    val appReleaseInfo = _appReleaseInfo.asStateFlow()
     private val _showUpdateDialog = MutableStateFlow(false)
-    val showUpdateDialog: StateFlow<Boolean> = _showUpdateDialog.asStateFlow()
-
+    val showUpdateDialog = _showUpdateDialog.asStateFlow()
     private val _isDownloadingAppUpdate = MutableStateFlow(false)
-    val isDownloadingAppUpdate: StateFlow<Boolean> = _isDownloadingAppUpdate.asStateFlow()
-
+    val isDownloadingAppUpdate = _isDownloadingAppUpdate.asStateFlow()
     private val _appUpdateDownloadPercent = MutableStateFlow(0)
-    val appUpdateDownloadPercent: StateFlow<Int> = _appUpdateDownloadPercent.asStateFlow()
-
+    val appUpdateDownloadPercent = _appUpdateDownloadPercent.asStateFlow()
     private val _appUpdateErrorMessage = MutableStateFlow<String?>(null)
-    val appUpdateErrorMessage: StateFlow<String?> = _appUpdateErrorMessage.asStateFlow()
+    val appUpdateErrorMessage = _appUpdateErrorMessage.asStateFlow()
 
-    // Flashing state
     private val _isFlashing = MutableStateFlow(false)
-    val isFlashing: StateFlow<Boolean> = _isFlashing.asStateFlow()
-
+    val isFlashing = _isFlashing.asStateFlow()
     private val _flashPercent = MutableStateFlow(0)
-    val flashPercent: StateFlow<Int> = _flashPercent.asStateFlow()
-
-    private val _flashStatusText = MutableStateFlow("Ready — connect transmitter by USB-C OTG")
-    val flashStatusText: StateFlow<String> = _flashStatusText.asStateFlow()
-
-    private val _consoleLog = MutableStateFlow("[READY] Connect the board by USB OTG, then choose Install or Update.")
-    val consoleLog: StateFlow<String> = _consoleLog.asStateFlow()
-
+    val flashPercent = _flashPercent.asStateFlow()
+    private val _flashStatusText = MutableStateFlow("Ready — connect the transmitter with USB OTG")
+    val flashStatusText = _flashStatusText.asStateFlow()
+    private val _consoleLog = MutableStateFlow("[READY] No firmware has been written.")
+    val consoleLog = _consoleLog.asStateFlow()
     private val _flashSuccessMessage = MutableStateFlow<String?>(null)
-    val flashSuccessMessage: StateFlow<String?> = _flashSuccessMessage.asStateFlow()
-
+    val flashSuccessMessage = _flashSuccessMessage.asStateFlow()
     private val _flashErrorMessage = MutableStateFlow<String?>(null)
-    val flashErrorMessage: StateFlow<String?> = _flashErrorMessage.asStateFlow()
+    val flashErrorMessage = _flashErrorMessage.asStateFlow()
 
-    // Backup state
     private val _isExporting = MutableStateFlow(false)
-    val isExporting: StateFlow<Boolean> = _isExporting.asStateFlow()
-
+    val isExporting = _isExporting.asStateFlow()
     private val _exportProgress = MutableStateFlow<Pair<Int, Int>?>(null)
-    val exportProgress: StateFlow<Pair<Int, Int>?> = _exportProgress.asStateFlow()
-
-    private val _exportedModels = MutableStateFlow<Map<Int, SourceTxModelEnvelope>?>(null)
-    val exportedModels: StateFlow<Map<Int, SourceTxModelEnvelope>?> = _exportedModels.asStateFlow()
-
+    val exportProgress = _exportProgress.asStateFlow()
+    private val _preparedBackup = MutableStateFlow<PreparedModelBackup?>(null)
+    val preparedBackup = _preparedBackup.asStateFlow()
     private val _backupErrorMessage = MutableStateFlow<String?>(null)
-    val backupErrorMessage: StateFlow<String?> = _backupErrorMessage.asStateFlow()
+    val backupErrorMessage = _backupErrorMessage.asStateFlow()
 
-    // Restore state
-    private val _loadedEnvelope = MutableStateFlow<SourceTxModelEnvelope?>(null)
-    val loadedEnvelope: StateFlow<SourceTxModelEnvelope?> = _loadedEnvelope.asStateFlow()
-
-    private val _loadedFileName = MutableStateFlow<String?>(null)
-    val loadedFileName: StateFlow<String?> = _loadedFileName.asStateFlow()
-
+    private val _loadedBackup = MutableStateFlow<LoadedModelBackup?>(null)
+    val loadedBackup = _loadedBackup.asStateFlow()
     private val _isRestoring = MutableStateFlow(false)
-    val isRestoring: StateFlow<Boolean> = _isRestoring.asStateFlow()
-
+    val isRestoring = _isRestoring.asStateFlow()
+    private val _restoreProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+    val restoreProgress = _restoreProgress.asStateFlow()
     private val _restoreSuccessMessage = MutableStateFlow<String?>(null)
-    val restoreSuccessMessage: StateFlow<String?> = _restoreSuccessMessage.asStateFlow()
-
+    val restoreSuccessMessage = _restoreSuccessMessage.asStateFlow()
     private val _restoreErrorMessage = MutableStateFlow<String?>(null)
-    val restoreErrorMessage: StateFlow<String?> = _restoreErrorMessage.asStateFlow()
+    val restoreErrorMessage = _restoreErrorMessage.asStateFlow()
 
     init {
         usbManager.register()
         _catalog.value = TargetsCatalog.loadFromAssets(application)
-        // Check for updates on startup
         checkForAppUpdate(silent = true)
     }
 
     override fun onCleared() {
-        super.onCleared()
         usbManager.unregister()
+        super.onCleared()
     }
 
     fun navigateTo(screen: AppScreen) {
@@ -135,341 +105,241 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleTheme() {
         _isDarkTheme.value = !_isDarkTheme.value
+        preferences.edit().putBoolean("dark_theme", _isDarkTheme.value).apply()
     }
 
-    private fun log(message: String) {
-        val current = _consoleLog.value
-        _consoleLog.value = "$current\n$message"
-    }
-
-    /**
-     * Checks GitHub for a newer APK release.
-     */
     fun checkForAppUpdate(silent: Boolean = false) {
         viewModelScope.launch {
             _isCheckingAppUpdate.value = true
             _appUpdateErrorMessage.value = null
-
             val result = AppUpdateManager.checkForUpdates(currentAppVersion)
             _isCheckingAppUpdate.value = false
-
-            if (result.isSuccess) {
-                val info = result.getOrNull()
+            result.onSuccess { info ->
                 _appReleaseInfo.value = info
-                if (info != null && (info.isNewer || !silent)) {
-                    _showUpdateDialog.value = true
-                }
-            } else if (!silent) {
-                _appUpdateErrorMessage.value = result.exceptionOrNull()?.message ?: "Check update failed"
+                if (info != null && (info.isNewer || !silent)) _showUpdateDialog.value = true
+            }.onFailure { error ->
+                if (!silent) _appUpdateErrorMessage.value = error.message ?: "Could not check for app updates."
             }
         }
     }
 
     fun dismissUpdateDialog() {
         _showUpdateDialog.value = false
+        _appUpdateErrorMessage.value = null
+    }
+
+    fun consumeAppUpdateError() {
+        _appUpdateErrorMessage.value = null
     }
 
     fun downloadAndInstallAppUpdate() {
         val info = _appReleaseInfo.value ?: return
-
+        if (!info.isNewer) {
+            _showUpdateDialog.value = false
+            return
+        }
         viewModelScope.launch {
             _isDownloadingAppUpdate.value = true
             _appUpdateDownloadPercent.value = 0
             _appUpdateErrorMessage.value = null
-
-            val result = AppUpdateManager.downloadAndInstallApk(
-                context = getApplication(),
-                downloadUrl = info.apkDownloadUrl,
-                fileName = info.apkFileName,
-                onProgress = { pct, _, _ -> _appUpdateDownloadPercent.value = pct }
-            )
-
+            AppUpdateManager.downloadAndInstallApk(
+                getApplication(),
+                info
+            ) { percent, _, _ -> _appUpdateDownloadPercent.value = percent }
+                .onSuccess { _showUpdateDialog.value = false }
+                .onFailure { _appUpdateErrorMessage.value = it.message ?: "App update download failed." }
             _isDownloadingAppUpdate.value = false
-            if (result.isFailure) {
-                _appUpdateErrorMessage.value = result.exceptionOrNull()?.message ?: "Download failed"
-            } else {
-                _showUpdateDialog.value = false
-            }
         }
     }
 
-    /**
-     * Executes real ESP32-S3 preflight and factory firmware installation.
-     */
     fun startFactoryInstall(eraseFlash: Boolean) {
+        startFirmwareOperation(factory = true, eraseFlash = eraseFlash)
+    }
+
+    fun startRegularUpdate() {
+        startFirmwareOperation(factory = false, eraseFlash = false)
+    }
+
+    private fun startFirmwareOperation(factory: Boolean, eraseFlash: Boolean) {
+        if (_isFlashing.value) return
         viewModelScope.launch {
             _isFlashing.value = true
             _flashPercent.value = 0
             _flashErrorMessage.value = null
             _flashSuccessMessage.value = null
-            _flashStatusText.value = "Connecting to ESP32-S3 ROM bootloader..."
-            log("[INSTALL] Starting factory installation...")
-
-            val port = usbManager.openPort(115200)
-            if (port == null) {
-                val err = "Failed to open USB OTG serial port. Please grant USB permission."
-                _flashErrorMessage.value = err
-                log("[ERROR] $err")
-                _isFlashing.value = false
-                return@launch
-            }
-
+            _consoleLog.value = if (factory) "[INSTALL] Preparing a verified factory installation." else "[UPDATE] Preparing a verified application update."
             try {
-                val flasher = Esp32BootloaderClient(port)
-
-                // 1. SYNC
-                log("[PREFLIGHT] Synchronizing with ROM bootloader...")
-                val syncResult = flasher.sync()
-                if (syncResult.isFailure) {
-                    throw syncResult.exceptionOrNull() ?: Exception("Sync timed out. Hold BOOT button while plugging in USB.")
-                }
-                log("[PREFLIGHT] Bootloader synchronized ✓")
-
-                // 2. CHIP IDENTIFICATION & PREFLIGHT
-                log("[PREFLIGHT] Querying target silicon register...")
-                flasher.readRegister(Esp32BootloaderClient.ESP32S3_MAGIC_REG)
-                log("[PREFLIGHT] Hardware confirmed: ESP32-S3 SuperMini (4MB Flash DIO/80M, 2MB Quad-PSRAM) ✓")
-
-                // 3. SPI FLASH ATTACH
-                log("[SPI] Attaching SPI flash controller (DIO 80MHz)...")
-                val spiResult = flasher.attachSpiFlash()
-                if (spiResult.isFailure) {
-                    throw spiResult.exceptionOrNull() ?: Exception("SPI flash attach failed.")
-                }
-                log("[SPI] SPI flash ready ✓")
-
-                // 4. FETCH FIRMWARE
-                _flashStatusText.value = "Downloading signed release package..."
-                log("[DOWNLOAD] Fetching verified stable factory release...")
-                val activeBoard = _catalog.value?.boards?.firstOrNull { it.enabled }
-                val manifestUrl = activeBoard?.factoryManifestUrl ?: "https://github.com/DrMeowy/SourceTX-Updates/releases/latest/download/factory.json"
-
-                val firmwareData = withContext(Dispatchers.IO) {
-                    try {
-                        val conn = URL(manifestUrl).openConnection()
-                        conn.connectTimeout = 8000
-                        conn.readTimeout = 15000
-                        conn.getInputStream().use { it.readBytes() }
-                    } catch (e: Exception) {
-                        log("[NOTICE] Using packaged offline reference binary (${e.localizedMessage})")
-                        ByteArray(65536) { 0xFF.toByte() }
+                val board = _catalog.value?.boards?.singleOrNull { it.enabled }
+                    ?: error("The supported SourceTX hardware profile could not be loaded.")
+                _flashStatusText.value = "Downloading and verifying the signed stable release..."
+                val packageResult = if (factory) {
+                    firmwareRepository.acquireFactory(board) { percent ->
+                        _flashPercent.value = percent / 5
+                    }
+                } else {
+                    firmwareRepository.acquireApplication(board) { percent ->
+                        _flashPercent.value = percent / 5
                     }
                 }
-                log("[DOWNLOAD] Release package validated (${firmwareData.size} bytes) ✓")
+                val firmwarePackage = packageResult.getOrThrow()
+                log("[VERIFY] Signed SourceTX v${firmwarePackage.manifest.version} package verified (${firmwarePackage.image.size} bytes).")
 
-                // 5. ERASE (OPTIONAL)
-                if (eraseFlash) {
-                    _flashStatusText.value = "Erasing flash memory..."
-                    log("[ERASE] Full chip erase requested. Clearing all saved settings...")
-                    delay(500)
-                }
-
-                // 6. FLASH DATA STREAM
-                _flashStatusText.value = "Writing firmware to flash..."
-                log("[FLASH] Writing binary at offset 0x000000...")
-
-                val flashResult = flasher.flashBinary(
-                    offset = 0x000000,
-                    data = firmwareData
-                ) { written, total ->
-                    val pct = if (total > 0) ((written.toDouble() / total) * 100).toInt() else 0
-                    _flashPercent.value = pct
-                    _flashStatusText.value = "Flashing: $pct% ($written / $total bytes)"
-                }
-
-                if (flashResult.isFailure) {
-                    throw flashResult.exceptionOrNull() ?: Exception("Flash write failed.")
-                }
-
-                _flashPercent.value = 100
-                _flashStatusText.value = "Installation Complete!"
-                _flashSuccessMessage.value = "SourceTX factory installation completed successfully! Transmitter rebooted."
-                log("[SUCCESS] Installation verified and complete! Transmitter rebooted into SourceTX v1.98.")
-            } catch (e: Exception) {
-                val err = "Installation failed: ${e.localizedMessage}"
-                _flashErrorMessage.value = err
-                _flashStatusText.value = "Installation Failed"
-                log("[ERROR] $err")
-            } finally {
-                _isFlashing.value = false
-                usbManager.disconnect()
-            }
-        }
-    }
-
-    /**
-     * Executes regular firmware update while preserving user models and NVS.
-     */
-    fun startRegularUpdate() {
-        viewModelScope.launch {
-            _isFlashing.value = true
-            _flashPercent.value = 0
-            _flashErrorMessage.value = null
-            _flashSuccessMessage.value = null
-            _flashStatusText.value = "Connecting for regular update..."
-            log("[UPDATE] Starting regular update (models & NVS preserved)...")
-
-            val port = usbManager.openPort(115200)
-            if (port == null) {
-                val err = "Failed to open USB OTG port. Grant USB permission."
-                _flashErrorMessage.value = err
-                log("[ERROR] $err")
-                _isFlashing.value = false
-                return@launch
-            }
-
-            try {
+                _flashStatusText.value = "Checking the connected ESP32-S3..."
+                val port = usbManager.openPort(115200, requireEspressif = true)
+                    ?: error("Connect the ESP32-S3 by USB OTG, grant permission, and try again.")
                 val flasher = Esp32BootloaderClient(port)
+                val target = flasher.preflight().getOrThrow()
+                log("[PREFLIGHT] ESP32-S3 confirmed; JEDEC flash ID 0x${target.flashId.toString(16).uppercase()}, 4MB.")
+                _flashPercent.value = 22
 
-                log("[PREFLIGHT] Synchronizing with target...")
-                val syncResult = flasher.sync()
-                if (syncResult.isFailure) {
-                    throw syncResult.exceptionOrNull() ?: Exception("Sync timed out. Ensure transmitter is connected.")
+                if (factory && eraseFlash) {
+                    _flashStatusText.value = "Erasing all saved settings, models, and firmware..."
+                    log("[ERASE] Full flash erase requested.")
+                    flasher.eraseEntireFlash { status -> log("[ERASE] $status") }.getOrThrow()
+                    _flashPercent.value = 28
                 }
 
-                log("[PREFLIGHT] Target verified: ESP32-S3 (4MB DIO/80M) ✓")
-                flasher.attachSpiFlash()
-
-                _flashStatusText.value = "Writing update package..."
-                log("[FLASH] Writing app update partition at offset 0x010000 (preserving NVS 0x3D0000)...")
-
-                val updatePayload = ByteArray(32768) { 0xFF.toByte() }
-                val flashResult = flasher.flashBinary(
-                    offset = 0x010000,
-                    data = updatePayload
-                ) { written, total ->
-                    val pct = if (total > 0) ((written.toDouble() / total) * 100).toInt() else 0
-                    _flashPercent.value = pct
-                    _flashStatusText.value = "Updating: $pct%"
-                }
-
-                if (flashResult.isFailure) {
-                    throw flashResult.exceptionOrNull() ?: Exception("Update failed.")
-                }
-
+                val offset = if (factory) 0x000000 else 0x010000
+                _flashStatusText.value = if (factory) "Installing SourceTX — do not disconnect USB..." else "Updating SourceTX — do not disconnect USB..."
+                log("[FLASH] Writing verified image at 0x${offset.toString(16).padStart(6, '0').uppercase()}.")
+                flasher.writeAndVerify(offset, firmwarePackage.image) { written, total ->
+                    val start = if (factory && eraseFlash) 28 else 22
+                    _flashPercent.value = start + ((written.toLong() * (96 - start)) / total.toLong()).toInt()
+                    _flashStatusText.value = "Writing and verifying SourceTX: ${_flashPercent.value}%"
+                }.getOrThrow()
+                log("[VERIFY] ESP32-S3 flash MD5 matches the signed firmware package.")
+                _flashPercent.value = 98
+                _flashStatusText.value = "Restarting the transmitter..."
+                flasher.reboot().getOrThrow()
                 _flashPercent.value = 100
-                _flashStatusText.value = "Update Complete!"
-                _flashSuccessMessage.value = "SourceTX firmware successfully updated! All saved models preserved."
-                log("[SUCCESS] Update finished! Transmitter rebooted.")
-            } catch (e: Exception) {
-                val err = "Update failed: ${e.localizedMessage}"
-                _flashErrorMessage.value = err
-                _flashStatusText.value = "Update Failed"
-                log("[ERROR] $err")
+                _flashStatusText.value = if (factory) "Installation complete" else "Update complete"
+                _flashSuccessMessage.value = if (factory) {
+                    "SourceTX v${firmwarePackage.manifest.version} was installed and verified."
+                } else {
+                    "SourceTX v${firmwarePackage.manifest.version} was updated and verified. Saved models were preserved."
+                }
+                log("[SUCCESS] Firmware write, on-device verification, and restart completed.")
+            } catch (error: Throwable) {
+                val message = error.message ?: "Unknown firmware operation error."
+                _flashErrorMessage.value = message
+                _flashStatusText.value = if (factory) "Installation stopped" else "Update stopped"
+                log("[ERROR] $message")
             } finally {
-                _isFlashing.value = false
                 usbManager.disconnect()
+                _isFlashing.value = false
             }
         }
     }
 
     fun startExport(exportAll: Boolean) {
+        if (_isExporting.value) return
         viewModelScope.launch {
             _isExporting.value = true
             _backupErrorMessage.value = null
-            _exportedModels.value = null
-            _exportProgress.value = Pair(0, 1)
-
-            val port = usbManager.openPort()
-            if (port == null) {
-                _backupErrorMessage.value = "Failed to open USB OTG serial port."
-                _isExporting.value = false
-                return@launch
-            }
-
+            _preparedBackup.value = null
+            _exportProgress.value = 0 to 1
             try {
+                val port = usbManager.openPort() ?: error("Connect SourceTX by USB OTG and grant USB permission.")
                 val client = SourceTxSerialClient(port)
-                val handshakeResult = client.handshake()
-
-                if (handshakeResult.isFailure) {
-                    _backupErrorMessage.value = handshakeResult.exceptionOrNull()?.message ?: "Handshake failed."
-                    _isExporting.value = false
-                    usbManager.disconnect()
-                    return@launch
-                }
-
-                val info = handshakeResult.getOrThrow()
-                val exportResult = client.exportModels(
-                    info = info,
-                    exportAll = exportAll,
-                    onProgress = { cur, tot -> _exportProgress.value = Pair(cur, tot) }
-                )
-
-                if (exportResult.isSuccess) {
-                    _exportedModels.value = exportResult.getOrThrow()
+                val info = client.handshake().getOrThrow()
+                val models = client.exportModels(info, exportAll) { current, total ->
+                    _exportProgress.value = current to total
+                }.getOrThrow()
+                val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                _preparedBackup.value = if (exportAll) {
+                    val bundle = when (val result = ModelTransferProtocol.createBundle(
+                        models,
+                        info.activeModel,
+                        info.protocolVersion
+                    )) {
+                        is ParseResult.Error -> error(result.message)
+                        is ParseResult.Success -> result.data
+                    }
+                    PreparedModelBackup(
+                        ModelTransferProtocol.serializeBundle(bundle),
+                        "SourceTX_all_models_$date.stxb",
+                        models,
+                        true
+                    )
                 } else {
-                    _backupErrorMessage.value = exportResult.exceptionOrNull()?.message ?: "Export failed."
+                    val envelope = models.values.single()
+                    PreparedModelBackup(
+                        envelope.text,
+                        "${safeFileName(envelope.modelName)}_model.stxm",
+                        models,
+                        false
+                    )
                 }
-            } catch (e: Exception) {
-                _backupErrorMessage.value = "Export error: ${e.localizedMessage}"
+            } catch (error: Throwable) {
+                _backupErrorMessage.value = error.message ?: "Model backup failed."
             } finally {
-                _isExporting.value = false
                 usbManager.disconnect()
+                _isExporting.value = false
             }
         }
     }
 
-    fun loadFileForRestore(uri: Uri, content: String, fileName: String) {
-        _loadedFileName.value = fileName
+    fun loadFileForRestore(content: String, fileName: String) {
+        _loadedBackup.value = null
         _restoreErrorMessage.value = null
         _restoreSuccessMessage.value = null
-
-        when (val result = ModelTransferProtocol.parseEnvelope(content)) {
-            is ParseResult.Success -> {
-                _loadedEnvelope.value = result.data
+        val trimmed = content.trim()
+        if (trimmed.startsWith("{")) {
+            when (val result = ModelTransferProtocol.parseBundle(trimmed)) {
+                is ParseResult.Error -> _restoreErrorMessage.value = result.message
+                is ParseResult.Success -> _loadedBackup.value = LoadedModelBackup.Complete(
+                    fileName,
+                    result.data.first,
+                    result.data.second
+                )
             }
-            is ParseResult.Error -> {
-                when (val bundleResult = ModelTransferProtocol.parseBundle(content)) {
-                    is ParseResult.Success -> {
-                        _loadedEnvelope.value = bundleResult.data.second.firstOrNull()
-                    }
-                    is ParseResult.Error -> {
-                        _loadedEnvelope.value = null
-                        _restoreErrorMessage.value = result.message
-                    }
-                }
+        } else {
+            when (val result = ModelTransferProtocol.parseEnvelope(trimmed)) {
+                is ParseResult.Error -> _restoreErrorMessage.value = result.message
+                is ParseResult.Success -> _loadedBackup.value = LoadedModelBackup.Single(fileName, result.data)
             }
         }
     }
 
     fun startRestore(targetSlot: Int) {
-        val envelope = _loadedEnvelope.value ?: return
-
+        val backup = _loadedBackup.value ?: return
+        if (_isRestoring.value) return
         viewModelScope.launch {
             _isRestoring.value = true
             _restoreErrorMessage.value = null
             _restoreSuccessMessage.value = null
-
-            val port = usbManager.openPort()
-            if (port == null) {
-                _restoreErrorMessage.value = "Failed to open USB OTG serial port."
-                _isRestoring.value = false
-                return@launch
-            }
-
+            _restoreProgress.value = null
             try {
+                val port = usbManager.openPort() ?: error("Connect SourceTX by USB OTG and grant USB permission.")
                 val client = SourceTxSerialClient(port)
-                val handshakeResult = client.handshake()
-
-                if (handshakeResult.isFailure) {
-                    _restoreErrorMessage.value = handshakeResult.exceptionOrNull()?.message ?: "Handshake failed."
-                    _isRestoring.value = false
-                    usbManager.disconnect()
-                    return@launch
+                val info = client.handshake().getOrThrow()
+                when (backup) {
+                    is LoadedModelBackup.Single -> {
+                        client.importModel(info, targetSlot, backup.envelope).getOrThrow()
+                        _restoreSuccessMessage.value = "Restored '${backup.envelope.modelName}' to model slot $targetSlot."
+                    }
+                    is LoadedModelBackup.Complete -> {
+                        client.restoreBundle(info, backup.bundle, backup.envelopes) { current, total ->
+                            _restoreProgress.value = current to total
+                        }.getOrThrow()
+                        _restoreSuccessMessage.value = "Restored all ${backup.bundle.modelCount} models successfully."
+                    }
                 }
-
-                val restoreResult = client.restoreModel(targetSlot, envelope)
-                if (restoreResult.isSuccess) {
-                    _restoreSuccessMessage.value = "Successfully restored '${envelope.modelName}' to slot $targetSlot!"
-                } else {
-                    _restoreErrorMessage.value = restoreResult.exceptionOrNull()?.message ?: "Restore failed."
-                }
-            } catch (e: Exception) {
-                _restoreErrorMessage.value = "Restore error: ${e.localizedMessage}"
+            } catch (error: Throwable) {
+                _restoreErrorMessage.value = error.message ?: "Model restore failed."
             } finally {
-                _isRestoring.value = false
                 usbManager.disconnect()
+                _isRestoring.value = false
             }
         }
     }
+
+    private fun log(message: String) {
+        _consoleLog.value += "\n$message"
+    }
+
+    private fun safeFileName(value: String): String = value
+        .replace(Regex("[^A-Za-z0-9._-]+"), "_")
+        .trim('_', '.', ' ')
+        .ifBlank { "SourceTX_model" }
 }

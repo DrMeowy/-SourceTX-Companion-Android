@@ -73,7 +73,7 @@ fun AppUpdateDialog(
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
-                        text = "Update Available",
+                        text = if (releaseInfo.isNewer) "Update Available" else "You're Up to Date",
                         color = colors.textPrimary,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
@@ -90,7 +90,7 @@ fun AppUpdateDialog(
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = releaseInfo.releaseTitle,
+                    text = if (releaseInfo.isNewer) releaseInfo.releaseTitle else "SourceTX Companion ${releaseInfo.versionName} is the latest stable version.",
                     color = colors.textPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
@@ -171,30 +171,36 @@ fun AppUpdateDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = onConfirmUpdate,
-                enabled = !isDownloading,
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = colors.accent,
-                    contentColor = colors.background
-                )
-            ) {
-                if (isDownloading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        color = colors.background,
-                        strokeWidth = 2.dp
+            if (releaseInfo.isNewer) {
+                Button(
+                    onClick = onConfirmUpdate,
+                    enabled = !isDownloading,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.accent,
+                        contentColor = colors.background
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Downloading...", fontSize = 12.sp)
-                } else {
-                    Text("Download & Install", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                ) {
+                    if (isDownloading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = colors.background,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Downloading...", fontSize = 12.sp)
+                    } else {
+                        Text("Download & Install", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            } else {
+                Button(onClick = onDismiss, shape = RoundedCornerShape(8.dp)) {
+                    Text("Close", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
         },
         dismissButton = {
-            if (!isDownloading) {
+            if (!isDownloading && releaseInfo.isNewer) {
                 OutlinedButton(
                     onClick = onDismiss,
                     shape = RoundedCornerShape(8.dp)

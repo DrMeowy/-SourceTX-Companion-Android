@@ -8,282 +8,410 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.security.MessageDigest
+import kotlin.math.min
+
+data class Esp32TargetInfo(
+    val chipId: Int,
+    val flashId: Long,
+    val flashSizeBytes: Int,
+    val securityFlags: Long
+)
 
 /**
- * Native implementation of Espressif ESP32-S3 ROM Bootloader SLIP protocol over USB CDC-ACM.
- * Performs chip preflight, SPI flash attach, block erase, and streaming flash writes.
+ * ESP32-S3 ROM serial-bootloader client. Every response is status-checked and
+ * every completed write is verified on the target with SPI_FLASH_MD5.
  */
 class Esp32BootloaderClient(private val port: UsbSerialPort) {
-
     companion object {
-        const val ESP_SYNC = 0x08
-        const val ESP_READ_REG = 0x0A
-        const val ESP_WRITE_REG = 0x09
-        const val ESP_SPI_ATTACH = 0x0D
-        const val ESP_SPI_SET_PARAMS = 0x0B
-        const val ESP_FLASH_BEGIN = 0x02
-        const val ESP_FLASH_DATA = 0x03
-        const val ESP_FLASH_END = 0x04
+        private const val ESP_FLASH_BEGIN = 0x02
+        private const val ESP_FLASH_DATA = 0x03
+        private const val ESP_FLASH_END = 0x04
+        private const val ESP_SYNC = 0x08
+        private const val ESP_WRITE_REG = 0x09
+        private const val ESP_READ_REG = 0x0A
+        private const val ESP_SPI_SET_PARAMS = 0x0B
+        private const val ESP_SPI_ATTACH = 0x0D
+        private const val ESP_SPI_FLASH_MD5 = 0x13
+        private const val ESP_GET_SECURITY_INFO = 0x14
+        private const val ESP32_S3_CHIP_ID = 9
+        private const val EXPECTED_FLASH_SIZE = 4 * 1024 * 1024
+        private const val FLASH_BLOCK_SIZE = 1024
+        private const val CHECKSUM_SEED = 0xEF
 
-        const val SLIP_END = 0xC0.toByte()
-        const val SLIP_ESC = 0xDB.toByte()
-        const val SLIP_ESC_END = 0xDC.toByte()
-        const val SLIP_ESC_ESC = 0xDD.toByte()
+        private const val SPI_REG_BASE = 0x60002000L
+        private const val SPI_CMD_REG = SPI_REG_BASE + 0x00
+        private const val SPI_USR_REG = SPI_REG_BASE + 0x18
+        private const val SPI_USR1_REG = SPI_REG_BASE + 0x1C
+        private const val SPI_USR2_REG = SPI_REG_BASE + 0x20
+        private const val SPI_MOSI_DLEN_REG = SPI_REG_BASE + 0x24
+        private const val SPI_MISO_DLEN_REG = SPI_REG_BASE + 0x28
+        private const val SPI_W0_REG = SPI_REG_BASE + 0x58
+        private const val SPI_CMD_USR = 1L shl 18
+        private const val SPI_USR_COMMAND = 1L shl 31
+        private const val SPI_USR_MISO = 1L shl 28
+        private const val SPI_USR_MOSI = 1L shl 27
 
-        const val FLASH_BLOCK_SIZE = 1024
-        const val ESP32S3_MAGIC_REG = 0x60000078L
+        private const val SLIP_END = 0xC0
+        private const val SLIP_ESC = 0xDB
+        private const val SLIP_ESC_END = 0xDC
+        private const val SLIP_ESC_ESC = 0xDD
     }
 
+    private data class CommandResponse(val value: Long, val data: ByteArray)
     private val readBuffer = ByteArray(4096)
 
-    /**
-     * Attempts to synchronize with the ESP32-S3 ROM bootloader.
-     */
-    suspend fun sync(retries: Int = 10): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            drain()
-            // Toggle DTR/RTS to trigger ROM bootloader if standard reset circuitry exists
-            port.dtr = false
-            port.rts = true
-            delay(100)
-            port.dtr = true
-            port.rts = false
-            delay(100)
-            port.dtr = false
-            port.rts = false
-            delay(150)
-            drain()
+    suspend fun preflight(): Result<Esp32TargetInfo> = withContext(Dispatchers.IO) {
+        runCatching {
+            synchronize()
+            val security = command(
+                ESP_GET_SECURITY_INFO,
+                ByteArray(0),
+                responseDataLength = 20,
+                timeoutMs = 2_000
+            ).data
+            val securityBuffer = ByteBuffer.wrap(security).order(ByteOrder.LITTLE_ENDIAN)
+            val flags = securityBuffer.int.toLong() and 0xFFFFFFFFL
+            securityBuffer.position(12)
+            val chipId = securityBuffer.int
+            require(chipId == ESP32_S3_CHIP_ID) {
+                "Connected chip ID is $chipId, not ESP32-S3."
+            }
+            require(flags and (1L shl 2) == 0L) {
+                "Secure Download Mode is enabled; standard SourceTX flashing is not permitted."
+            }
 
-            // 36-byte sync packet payload: 0x07, 0x07, 0x12, 0x20 followed by 32 bytes of 0x55
-            val syncPayload = ByteArray(36) { 0x55.toByte() }
-            syncPayload[0] = 0x07
-            syncPayload[1] = 0x07
-            syncPayload[2] = 0x12
-            syncPayload[3] = 0x20
+            attachSpiFlash()
+            setSpiParameters(EXPECTED_FLASH_SIZE)
+            val flashId = runSpiFlashCommand(0x9F, readBits = 24)
+            val flashSize = decodeFlashSize(flashId)
+            require(flashSize == EXPECTED_FLASH_SIZE) {
+                val detected = if (flashSize > 0) "${flashSize / (1024 * 1024)}MB" else "unknown"
+                "Connected SPI flash is $detected; this release requires 4MB."
+            }
+            Esp32TargetInfo(chipId, flashId, flashSize, flags)
+        }
+    }
 
-            for (attempt in 1..retries) {
-                sendPacket(ESP_SYNC, syncPayload, checksum = 0)
-                val response = readPacket(300)
-                if (response != null && response.size >= 8 && response[0] == 0x01.toByte() && response[1] == ESP_SYNC.toByte()) {
-                    // Drain remaining sync echo responses
-                    for (i in 0..6) {
-                        readPacket(50)
+    suspend fun eraseEntireFlash(onStatus: (String) -> Unit = {}): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                onStatus("Sending chip erase command...")
+                runSpiFlashCommand(0x06)
+                runSpiFlashCommand(0xC7)
+                val deadline = System.currentTimeMillis() + 180_000L
+                do {
+                    delay(250)
+                    if (runSpiFlashCommand(0x05, readBits = 8) and 0x01L == 0L) {
+                        onStatus("Flash erase completed.")
+                        return@runCatching
                     }
-                    return@withContext Result.success(Unit)
-                }
-                delay(50)
+                } while (System.currentTimeMillis() < deadline)
+                throw IOException("Full flash erase timed out.")
             }
-            Result.failure(IOException("Failed to synchronize with ESP32-S3 ROM bootloader. Make sure device is connected."))
-        } catch (e: Exception) {
-            Result.failure(e)
         }
-    }
 
-    /**
-     * Reads a register value from target MCU to identify ESP32-S3 silicon.
-     */
-    suspend fun readRegister(regAddress: Long): Result<Long> = withContext(Dispatchers.IO) {
-        try {
-            val payload = ByteArray(4)
-            ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN).putInt(regAddress.toInt())
-            sendPacket(ESP_READ_REG, payload, checksum = 0)
-
-            val resp = readPacket(1000)
-                ?: return@withContext Result.failure(IOException("Register read timed out."))
-
-            if (resp.size >= 8 && resp[0] == 0x01.toByte() && resp[1] == ESP_READ_REG.toByte()) {
-                val value = ByteBuffer.wrap(resp, 4, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
-                return@withContext Result.success(value)
-            }
-            Result.failure(IOException("Invalid register read response from target."))
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    /**
-     * Attaches SPI flash and sets DIO 80MHz flash parameters.
-     */
-    suspend fun attachSpiFlash(): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            // SPI Attach: 8 zero bytes
-            val attachPayload = ByteArray(8) { 0 }
-            sendPacket(ESP_SPI_ATTACH, attachPayload, checksum = 0)
-            val attachResp = readPacket(1000)
-            if (attachResp == null || attachResp.size < 4 || attachResp[1] != ESP_SPI_ATTACH.toByte()) {
-                return@withContext Result.failure(IOException("SPI flash attach failed."))
-            }
-
-            // SPI Set Parameters (Flash Size: 4MB = 0, Flash Mode: DIO = 0, Flash Freq: 80M = 0x0F)
-            val paramBuf = ByteArray(24)
-            val buf = ByteBuffer.wrap(paramBuf).order(ByteOrder.LITTLE_ENDIAN)
-            buf.putInt(0) // total size 4MB
-            buf.putInt(4 * 1024 * 1024)
-            buf.putInt(64 * 1024)
-            buf.putInt(4 * 1024)
-            buf.putInt(256)
-            buf.putInt(0xFFFF)
-
-            sendPacket(ESP_SPI_SET_PARAMS, paramBuf, checksum = 0)
-            readPacket(1000)
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    /**
-     * Flashes binary data to specified flash offset with live progress reporting.
-     */
-    suspend fun flashBinary(
+    suspend fun writeAndVerify(
         offset: Int,
         data: ByteArray,
         onProgress: (bytesWritten: Int, totalBytes: Int) -> Unit
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
+        runCatching {
+            require(offset >= 0 && data.isNotEmpty() && offset.toLong() + data.size <= EXPECTED_FLASH_SIZE) {
+                "Firmware write is outside the supported 4MB flash range."
+            }
             val numBlocks = (data.size + FLASH_BLOCK_SIZE - 1) / FLASH_BLOCK_SIZE
-            val eraseSize = numBlocks * FLASH_BLOCK_SIZE
+            command(
+                ESP_FLASH_BEGIN,
+                littleEndianInts(data.size, numBlocks, FLASH_BLOCK_SIZE, offset, 0),
+                timeoutMs = 120_000
+            )
 
-            // FLASH BEGIN (offset, eraseSize, blockSize, numBlocks)
-            val beginPayload = ByteArray(16)
-            val beginBuf = ByteBuffer.wrap(beginPayload).order(ByteOrder.LITTLE_ENDIAN)
-            beginBuf.putInt(eraseSize)
-            beginBuf.putInt(numBlocks)
-            beginBuf.putInt(FLASH_BLOCK_SIZE)
-            beginBuf.putInt(offset)
-
-            sendPacket(ESP_FLASH_BEGIN, beginPayload, checksum = 0)
-            val beginResp = readPacket(12000) // Erasing flash sectors can take up to 10 seconds
-            if (beginResp == null || beginResp.size < 4 || beginResp[1] != ESP_FLASH_BEGIN.toByte()) {
-                return@withContext Result.failure(IOException("Flash begin/erase rejected by target."))
-            }
-
-            var bytesWritten = 0
-            for (blockIndex in 0 until numBlocks) {
-                val blockStart = blockIndex * FLASH_BLOCK_SIZE
-                val blockLength = kotlin.math.min(FLASH_BLOCK_SIZE, data.size - blockStart)
-                val blockData = ByteArray(FLASH_BLOCK_SIZE) { 0xFF.toByte() }
-                System.arraycopy(data, blockStart, blockData, 0, blockLength)
-
-                // Checksum calculation: sum of all bytes in blockData
-                var checksum = 0xEF
-                for (b in blockData) {
-                    checksum = checksum xor (b.toInt() and 0xFF)
+            var written = 0
+            for (sequence in 0 until numBlocks) {
+                val sourceOffset = sequence * FLASH_BLOCK_SIZE
+                val sourceLength = min(FLASH_BLOCK_SIZE, data.size - sourceOffset)
+                val block = ByteArray(FLASH_BLOCK_SIZE) { 0xFF.toByte() }
+                data.copyInto(block, 0, sourceOffset, sourceOffset + sourceLength)
+                val payload = ByteArray(16 + FLASH_BLOCK_SIZE)
+                ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN).apply {
+                    putInt(FLASH_BLOCK_SIZE)
+                    putInt(sequence)
+                    putInt(0)
+                    putInt(0)
+                    put(block)
                 }
 
-                // Header: size, seq, 0, 0 (16 bytes) + blockData
-                val packetPayload = ByteArray(16 + FLASH_BLOCK_SIZE)
-                val pBuf = ByteBuffer.wrap(packetPayload).order(ByteOrder.LITTLE_ENDIAN)
-                pBuf.putInt(FLASH_BLOCK_SIZE)
-                pBuf.putInt(blockIndex)
-                pBuf.putInt(0)
-                pBuf.putInt(0)
-                pBuf.put(blockData)
-
-                sendPacket(ESP_FLASH_DATA, packetPayload, checksum)
-                val dataResp = readPacket(3000)
-                if (dataResp == null || dataResp.size < 4 || dataResp[1] != ESP_FLASH_DATA.toByte()) {
-                    return@withContext Result.failure(IOException("Flash block write failed at block $blockIndex."))
-                }
-
-                bytesWritten += blockLength
-                onProgress(bytesWritten, data.size)
-            }
-
-            // FLASH END
-            val endPayload = ByteArray(4)
-            ByteBuffer.wrap(endPayload).order(ByteOrder.LITTLE_ENDIAN).putInt(1) // 1 = reboot to normal app
-            sendPacket(ESP_FLASH_END, endPayload, checksum = 0)
-            readPacket(1000)
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    private fun sendPacket(op: Int, data: ByteArray, checksum: Int) {
-        val out = ByteArrayOutputStream()
-        out.write(SLIP_END.toInt())
-
-        // Header: Direction (0x00), Opcode (1 byte), Size (2 bytes), Checksum (4 bytes)
-        val header = ByteArray(8)
-        val hBuf = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
-        hBuf.put(0x00.toByte()) // 0 = Request to target
-        hBuf.put(op.toByte())
-        hBuf.putShort(data.size.toShort())
-        hBuf.putInt(checksum)
-
-        writeSlipEscaped(out, header)
-        writeSlipEscaped(out, data)
-
-        out.write(SLIP_END.toInt())
-        val packet = out.toByteArray()
-        port.write(packet, 3000)
-    }
-
-    private fun writeSlipEscaped(out: ByteArrayOutputStream, bytes: ByteArray) {
-        for (b in bytes) {
-            when (b) {
-                SLIP_END -> {
-                    out.write(SLIP_ESC.toInt())
-                    out.write(SLIP_ESC_END.toInt())
-                }
-                SLIP_ESC -> {
-                    out.write(SLIP_ESC.toInt())
-                    out.write(SLIP_ESC_ESC.toInt())
-                }
-                else -> out.write(b.toInt() and 0xFF)
-            }
-        }
-    }
-
-    private fun readPacket(timeoutMs: Long): ByteArray? {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        val out = ByteArrayOutputStream()
-        var inPacket = false
-        var isEscaped = false
-
-        while (System.currentTimeMillis() < deadline) {
-            val len = try {
-                port.read(readBuffer, 50)
-            } catch (_: Exception) { 0 }
-
-            if (len > 0) {
-                for (i in 0 until len) {
-                    val b = readBuffer[i]
-                    if (b == SLIP_END) {
-                        if (inPacket && out.size() > 0) {
-                            return out.toByteArray()
-                        }
-                        inPacket = true
-                        out.reset()
-                        isEscaped = false
-                    } else if (inPacket) {
-                        if (isEscaped) {
-                            when (b) {
-                                SLIP_ESC_END -> out.write(SLIP_END.toInt())
-                                SLIP_ESC_ESC -> out.write(SLIP_ESC.toInt())
-                                else -> out.write(b.toInt() and 0xFF)
-                            }
-                            isEscaped = false
-                        } else if (b == SLIP_ESC) {
-                            isEscaped = true
-                        } else {
-                            out.write(b.toInt() and 0xFF)
-                        }
+                var failure: Throwable? = null
+                for (attempt in 0..1) {
+                    try {
+                        command(
+                            ESP_FLASH_DATA,
+                            payload,
+                            checksum = checksum(block),
+                            timeoutMs = 5_000
+                        )
+                        failure = null
+                        break
+                    } catch (error: Throwable) {
+                        failure = error
+                        if (attempt == 0) drain()
                     }
                 }
+                if (failure != null) throw IOException("Flash write failed at block $sequence.", failure)
+                written += sourceLength
+                onProgress(written, data.size)
+            }
+
+            val remoteMd5 = command(
+                ESP_SPI_FLASH_MD5,
+                littleEndianInts(offset, data.size, 0, 0),
+                responseDataLength = 32,
+                timeoutMs = 60_000
+            ).data.toString(Charsets.US_ASCII).lowercase()
+            val localMd5 = MessageDigest.getInstance("MD5")
+                .digest(data)
+                .joinToString("") { "%02x".format(it) }
+            require(remoteMd5 == localMd5) {
+                "Flash verification failed: data on the ESP32-S3 does not match the firmware package."
             }
         }
-        return if (out.size() > 0) out.toByteArray() else null
+    }
+
+    suspend fun reboot(): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            command(ESP_FLASH_END, littleEndianInts(0), timeoutMs = 2_000)
+            Unit
+        }.recoverCatching {
+            // Some USB/JTAG transports disappear before delivering the ROM
+            // response. A reset pulse is safe after successful MD5 verification.
+            port.dtr = false
+            port.rts = true
+            delay(100)
+            port.rts = false
+            port.dtr = false
+            Unit
+        }
+    }
+
+    private suspend fun synchronize() {
+        drain()
+        port.dtr = false
+        port.rts = true
+        delay(100)
+        port.dtr = true
+        port.rts = false
+        delay(100)
+        port.dtr = false
+        port.rts = false
+        delay(150)
+        drain()
+
+        val payload = ByteArray(36) { 0x55.toByte() }.apply {
+            this[0] = 0x07
+            this[1] = 0x07
+            this[2] = 0x12
+            this[3] = 0x20
+        }
+        var lastFailure: Throwable? = null
+        repeat(10) {
+            try {
+                command(ESP_SYNC, payload, timeoutMs = 500)
+                repeat(7) { readSlipPacket(50) }
+                return
+            } catch (error: Throwable) {
+                lastFailure = error
+                delay(50)
+            }
+        }
+        throw IOException(
+            "ESP32-S3 bootloader did not respond. Hold BOOT while connecting USB, then try again.",
+            lastFailure
+        )
+    }
+
+    private fun attachSpiFlash() {
+        command(ESP_SPI_ATTACH, littleEndianInts(0, 0), timeoutMs = 2_000)
+    }
+
+    private fun setSpiParameters(size: Int) {
+        command(
+            ESP_SPI_SET_PARAMS,
+            littleEndianInts(0, size, 64 * 1024, 4 * 1024, 256, 0xFFFF),
+            timeoutMs = 2_000
+        )
+    }
+
+    private fun readRegister(address: Long): Long =
+        command(ESP_READ_REG, littleEndianInts(address.toInt()), timeoutMs = 2_000).value
+
+    private fun writeRegister(address: Long, value: Long, mask: Long = 0xFFFFFFFFL, delayUs: Int = 0) {
+        command(
+            ESP_WRITE_REG,
+            littleEndianInts(address.toInt(), value.toInt(), mask.toInt(), delayUs),
+            timeoutMs = 2_000
+        )
+    }
+
+    private fun runSpiFlashCommand(
+        spiCommand: Int,
+        data: ByteArray = ByteArray(0),
+        readBits: Int = 0
+    ): Long {
+        require(readBits in 0..32 && data.size <= 64) { "Unsupported SPI command size." }
+        val oldUsr = readRegister(SPI_USR_REG)
+        val oldUsr2 = readRegister(SPI_USR2_REG)
+        try {
+            if (data.isNotEmpty()) writeRegister(SPI_MOSI_DLEN_REG, data.size * 8L - 1)
+            if (readBits > 0) writeRegister(SPI_MISO_DLEN_REG, readBits.toLong() - 1)
+            var flags = SPI_USR_COMMAND
+            if (data.isNotEmpty()) flags = flags or SPI_USR_MOSI
+            if (readBits > 0) flags = flags or SPI_USR_MISO
+            writeRegister(SPI_USR1_REG, 0)
+            writeRegister(SPI_USR_REG, flags)
+            writeRegister(SPI_USR2_REG, (7L shl 28) or (spiCommand.toLong() and 0xFF))
+
+            if (data.isEmpty()) {
+                writeRegister(SPI_W0_REG, 0)
+            } else {
+                val padded = data.copyOf((data.size + 3) / 4 * 4)
+                val buffer = ByteBuffer.wrap(padded).order(ByteOrder.LITTLE_ENDIAN)
+                var register = SPI_W0_REG
+                while (buffer.remaining() >= 4) {
+                    writeRegister(register, buffer.int.toLong() and 0xFFFFFFFFL)
+                    register += 4
+                }
+            }
+            writeRegister(SPI_CMD_REG, SPI_CMD_USR)
+            repeat(50) {
+                if (readRegister(SPI_CMD_REG) and SPI_CMD_USR == 0L) return readRegister(SPI_W0_REG)
+            }
+            throw IOException("SPI flash command 0x${spiCommand.toString(16)} timed out.")
+        } finally {
+            writeRegister(SPI_USR_REG, oldUsr)
+            writeRegister(SPI_USR2_REG, oldUsr2)
+        }
+    }
+
+    private fun decodeFlashSize(flashId: Long): Int {
+        val vendor = (flashId and 0xFF).toInt()
+        val sizeCode = if (vendor == 0x1F) ((flashId shr 8) and 0x1F).toInt()
+        else ((flashId shr 16) and 0xFF).toInt()
+        return if (vendor == 0x1F) {
+            mapOf(0x04 to 512 * 1024, 0x05 to 1024 * 1024, 0x06 to 2 * 1024 * 1024,
+                0x07 to 4 * 1024 * 1024, 0x08 to 8 * 1024 * 1024, 0x09 to 16 * 1024 * 1024)[sizeCode] ?: 0
+        } else {
+            mapOf(0x13 to 512 * 1024, 0x14 to 1024 * 1024, 0x15 to 2 * 1024 * 1024,
+                0x16 to 4 * 1024 * 1024, 0x17 to 8 * 1024 * 1024, 0x18 to 16 * 1024 * 1024)[sizeCode] ?: 0
+        }
+    }
+
+    private fun command(
+        opcode: Int,
+        payload: ByteArray,
+        checksum: Int = 0,
+        responseDataLength: Int = 0,
+        timeoutMs: Long
+    ): CommandResponse {
+        sendRequest(opcode, payload, checksum)
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val packet = readSlipPacket((deadline - System.currentTimeMillis()).coerceAtLeast(1)) ?: continue
+            if (packet.size < 8) continue
+            val header = ByteBuffer.wrap(packet, 0, 8).order(ByteOrder.LITTLE_ENDIAN)
+            val direction = header.get().toInt() and 0xFF
+            val responseOpcode = header.get().toInt() and 0xFF
+            val dataLength = header.short.toInt() and 0xFFFF
+            val value = header.int.toLong() and 0xFFFFFFFFL
+            if (direction != 1 || responseOpcode != opcode) continue
+            if (packet.size < 8 + dataLength) throw IOException("ESP32-S3 returned a truncated response.")
+            val data = packet.copyOfRange(8, 8 + dataLength)
+            if (data.size < responseDataLength + 2) {
+                throw IOException("ESP32-S3 returned an incomplete status response for command 0x${opcode.toString(16)}.")
+            }
+            val status = data[responseDataLength].toInt() and 0xFF
+            val reason = data[responseDataLength + 1].toInt() and 0xFF
+            if (status != 0) {
+                throw IOException("ESP32-S3 rejected command 0x${opcode.toString(16)} (status $status, reason $reason).")
+            }
+            return CommandResponse(value, data.copyOfRange(0, responseDataLength))
+        }
+        throw IOException("ESP32-S3 timed out during command 0x${opcode.toString(16)}.")
+    }
+
+    private fun sendRequest(opcode: Int, payload: ByteArray, checksum: Int) {
+        val raw = ByteArray(8 + payload.size)
+        ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN).apply {
+            put(0)
+            put(opcode.toByte())
+            putShort(payload.size.toShort())
+            putInt(checksum)
+            put(payload)
+        }
+        val framed = ByteArrayOutputStream(raw.size + 2).apply {
+            write(SLIP_END)
+            raw.forEach { byte ->
+                when (byte.toInt() and 0xFF) {
+                    SLIP_END -> {
+                        write(SLIP_ESC)
+                        write(SLIP_ESC_END)
+                    }
+                    SLIP_ESC -> {
+                        write(SLIP_ESC)
+                        write(SLIP_ESC_ESC)
+                    }
+                    else -> write(byte.toInt() and 0xFF)
+                }
+            }
+            write(SLIP_END)
+        }.toByteArray()
+        port.write(framed, 5_000)
+    }
+
+    private fun readSlipPacket(timeoutMs: Long): ByteArray? {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        val output = ByteArrayOutputStream()
+        var inPacket = false
+        var escaped = false
+        while (System.currentTimeMillis() < deadline) {
+            val remaining = (deadline - System.currentTimeMillis()).coerceIn(1, 100).toInt()
+            val count = try { port.read(readBuffer, remaining) } catch (_: Exception) { 0 }
+            if (count <= 0) continue
+            for (index in 0 until count) {
+                val value = readBuffer[index].toInt() and 0xFF
+                when {
+                    value == SLIP_END -> {
+                        if (inPacket && output.size() > 0) return output.toByteArray()
+                        inPacket = true
+                        escaped = false
+                        output.reset()
+                    }
+                    !inPacket -> Unit
+                    escaped -> {
+                        when (value) {
+                            SLIP_ESC_END -> output.write(SLIP_END)
+                            SLIP_ESC_ESC -> output.write(SLIP_ESC)
+                            else -> throw IOException("ESP32-S3 returned an invalid SLIP escape sequence.")
+                        }
+                        escaped = false
+                    }
+                    value == SLIP_ESC -> escaped = true
+                    else -> output.write(value)
+                }
+            }
+        }
+        return null
     }
 
     private fun drain() {
-        try {
-            val buf = ByteArray(1024)
-            while (port.read(buf, 20) > 0) {}
-        } catch (_: Exception) {}
+        try { while (port.read(readBuffer, 20) > 0) Unit } catch (_: Exception) {}
     }
+
+    private fun checksum(data: ByteArray): Int =
+        data.fold(CHECKSUM_SEED) { value, byte -> value xor (byte.toInt() and 0xFF) }
+
+    private fun littleEndianInts(vararg values: Int): ByteArray =
+        ByteBuffer.allocate(values.size * 4).order(ByteOrder.LITTLE_ENDIAN).apply {
+            values.forEach(::putInt)
+        }.array()
 }

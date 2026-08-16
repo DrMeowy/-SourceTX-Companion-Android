@@ -2,99 +2,88 @@ package com.sourcetx.companion
 
 import com.sourcetx.companion.protocol.ModelTransferProtocol
 import com.sourcetx.companion.protocol.ParseResult
-import com.sourcetx.companion.protocol.SourceTxModelEnvelope
+import com.sourcetx.companion.protocol.SourceTxModelBundle
+import com.sourcetx.companion.protocol.SourceTxModelBundleEntry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 class ModelTransferProtocolTest {
+    private val goldenEnvelope =
+        "SOURCETX_MODEL:4D585453150010000000000000000000000000000000000048C478F6"
 
     @Test
-    fun testFnv1aCalculationMatchesKnownVector() {
-        val magic = 0x5354584DL // STXM
-        val schema = 21
-        val payloadSize = 16
-        val payload = ByteArray(payloadSize) { 0 }
-
-        val checksum = ModelTransferProtocol.calculateFnv1a(payload, magic, schema, payloadSize)
-        assertTrue("Checksum should be a valid unsigned 32-bit integer", checksum > 0L)
-    }
-
-    @Test
-    fun testEnvelopeCreationAndParsing() {
-        val magic = 0x5354584DL
-        val schema = 21
-        val payload = "TestModel123456\u0000\u0000".toByteArray(Charsets.US_ASCII)
-        val payloadSize = payload.size
-
-        val checksum = ModelTransferProtocol.calculateFnv1a(payload, magic, schema, payloadSize)
-
-        // Build raw binary: [4 bytes magic][2 bytes schema][2 bytes size][payload][4 bytes checksum]
-        val totalBytes = ByteArray(12 + payloadSize)
-        val buffer = ByteBuffer.wrap(totalBytes).order(ByteOrder.LITTLE_ENDIAN)
-        buffer.putInt(magic.toInt())
-        buffer.putShort(schema.toShort())
-        buffer.putShort(payloadSize.toShort())
-        buffer.put(payload)
-        buffer.putInt(checksum.toInt())
-
-        val hex = totalBytes.joinToString("") { "%02X".format(it) }
-        val envelopeText = "${ModelTransferProtocol.MODEL_PREFIX}$hex"
-
-        val parseResult = ModelTransferProtocol.parseEnvelope(envelopeText, schema, payloadSize)
-        assertTrue("Parsing should succeed", parseResult is ParseResult.Success)
-
-        val envelope = (parseResult as ParseResult.Success).data
-        assertEquals("TestModel123456", envelope.modelName)
-        assertEquals(schema, envelope.schema)
-        assertEquals(payloadSize, envelope.payloadSize)
-        assertEquals(checksum, envelope.checksum)
-    }
-
-    @Test
-    fun testBundleCreationAndParsing() {
-        val magic = 0x5354584DL
-        val schema = 21
-        val payload = "CrawlerSetup\u0000\u0000\u0000\u0000".toByteArray(Charsets.US_ASCII)
-        val payloadSize = payload.size
-        val checksum = ModelTransferProtocol.calculateFnv1a(payload, magic, schema, payloadSize)
-
-        val totalBytes = ByteArray(12 + payloadSize)
-        val buffer = ByteBuffer.wrap(totalBytes).order(ByteOrder.LITTLE_ENDIAN)
-        buffer.putInt(magic.toInt())
-        buffer.putShort(schema.toShort())
-        buffer.putShort(payloadSize.toShort())
-        buffer.put(payload)
-        buffer.putInt(checksum.toInt())
-
-        val hex = totalBytes.joinToString("") { "%02X".format(it) }
-        val envelope = SourceTxModelEnvelope(
-            text = "${ModelTransferProtocol.MODEL_PREFIX}$hex",
-            hex = hex,
-            magic = magic,
-            schema = schema,
-            payloadSize = payloadSize,
-            payload = payload,
-            checksum = checksum,
-            modelName = "CrawlerSetup"
+    fun fnvMatchesWindowsCompanionGoldenVector() {
+        assertEquals(
+            0xF678C448L,
+            ModelTransferProtocol.calculateFnv1a(ByteArray(16), 0x5354584DL, 21, 16)
         )
+    }
 
-        val models = mapOf(1 to envelope)
-        val bundleResult = ModelTransferProtocol.createBundle(models, activeModel = 1, protocolVersion = 1)
-        assertTrue("Bundle creation should succeed", bundleResult is ParseResult.Success)
+    @Test
+    fun parsesKnownSourceTxEnvelope() {
+        val result = ModelTransferProtocol.parseEnvelope(goldenEnvelope, 21, 16)
+        assertTrue(result is ParseResult.Success)
+        val envelope = (result as ParseResult.Success).data
+        assertEquals(21, envelope.schema)
+        assertEquals(16, envelope.payloadSize)
+        assertEquals(0xF678C448L, envelope.checksum)
+    }
 
-        val bundle = (bundleResult as ParseResult.Success).data
-        val json = ModelTransferProtocol.serializeBundle(bundle)
-        assertTrue("Serialized JSON should contain model name", json.contains("CrawlerSetup"))
+    @Test
+    fun bundleChecksumMatchesWindowsCompanionGoldenVector() {
+        val bundle = SourceTxModelBundle(
+            format = ModelTransferProtocol.BUNDLE_FORMAT,
+            version = 1,
+            protocol = 1,
+            schema = 21,
+            payloadSize = 16,
+            modelCount = 1,
+            activeModel = 1,
+            createdUtc = "2026-08-16T00:00:00.000Z",
+            models = listOf(SourceTxModelBundleEntry(1, "Unnamed Model", goldenEnvelope))
+        )
+        assertEquals(
+            "e2380f6f135f1f5759a8775b9bc323be2b89eacee4a13e2a46fbabe89adacf05",
+            ModelTransferProtocol.calculateBundleChecksum(bundle)
+        )
+    }
 
-        val parsedBundleResult = ModelTransferProtocol.parseBundle(json)
-        assertTrue("Parsing bundle JSON should succeed", parsedBundleResult is ParseResult.Success)
+    @Test
+    fun serializesAndParsesWindowsPascalCaseBundle() {
+        val envelope = (ModelTransferProtocol.parseEnvelope(goldenEnvelope) as ParseResult.Success).data
+        val created = ModelTransferProtocol.createBundle(mapOf(1 to envelope), 1, 1)
+        assertTrue(created is ParseResult.Success)
+        val json = ModelTransferProtocol.serializeBundle((created as ParseResult.Success).data)
+        assertTrue(json.contains("\"PayloadSize\":16"))
+        assertTrue(json.contains("\"ChecksumSha256\""))
+        assertTrue(!json.contains("payload_size"))
+        assertTrue(ModelTransferProtocol.parseBundle(json) is ParseResult.Success)
+    }
 
-        val (parsedBundle, envelopes) = (parsedBundleResult as ParseResult.Success).data
-        assertEquals(1, parsedBundle.modelCount)
-        assertEquals(1, envelopes.size)
-        assertEquals("CrawlerSetup", envelopes[0].modelName)
+    @Test
+    fun rejectsBundleWithoutRequiredChecksum() {
+        val json = """{
+            "Format":"SOURCETX_MODEL_BUNDLE","Version":1,"Protocol":1,
+            "Schema":21,"PayloadSize":16,"ModelCount":1,"ActiveModel":1,
+            "CreatedUtc":"2026-08-16T00:00:00Z","Models":[
+              {"Slot":1,"Name":"Model","Envelope":"$goldenEnvelope"}
+            ]
+        }""".trimIndent()
+        assertTrue(ModelTransferProtocol.parseBundle(json) is ParseResult.Error)
+    }
+
+    @Test
+    fun rejectsRepeatedBundleSlots() {
+        val entries = listOf(
+            SourceTxModelBundleEntry(1, "One", goldenEnvelope),
+            SourceTxModelBundleEntry(1, "Duplicate", goldenEnvelope)
+        )
+        val bundle = SourceTxModelBundle(
+            ModelTransferProtocol.BUNDLE_FORMAT, 1, 1, 21, 16, 2, 1,
+            "2026-08-16T00:00:00Z", models = entries
+        )
+        bundle.checksumSha256 = ModelTransferProtocol.calculateBundleChecksum(bundle)
+        assertTrue(ModelTransferProtocol.parseBundle(ModelTransferProtocol.serializeBundle(bundle)) is ParseResult.Error)
     }
 }

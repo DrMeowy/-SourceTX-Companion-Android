@@ -18,291 +18,240 @@ sealed class ParseResult<out T> {
 
 object ModelTransferProtocol {
     const val TRANSFER_MAGIC: Long = 0x5354584DL
-    const val PUBLIC_SCHEMA_VERSION: Int = 21
-    const val MODEL_PREFIX: String = "SOURCETX_MODEL:"
-    const val BUNDLE_FORMAT: String = "SOURCETX_MODEL_BUNDLE"
-    const val BUNDLE_VERSION: Int = 1
-    const val MAXIMUM_MODELS: Int = 20
+    const val PUBLIC_SCHEMA_VERSION = 21
+    const val MODEL_PREFIX = "SOURCETX_MODEL:"
+    const val BUNDLE_FORMAT = "SOURCETX_MODEL_BUNDLE"
+    const val BUNDLE_VERSION = 1
+    const val MAXIMUM_MODELS = 20
 
-    /**
-     * Calculates FNV-1a checksum over payload, magic, and version/payloadSize header fields.
-     */
-    fun calculateFnv1a(
-        payload: ByteArray,
-        magic: Long,
-        version: Int,
-        payloadSize: Int
-    ): Long {
-        var hash: Long = 2166136261L and 0xFFFFFFFFL
-        val prime: Long = 16777619L and 0xFFFFFFFFL
-
-        for (b in payload) {
-            val unsignedByte = (b.toInt() and 0xFF).toLong()
-            hash = (hash xor unsignedByte) and 0xFFFFFFFFL
-            hash = (hash * prime) and 0xFFFFFFFFL
+    fun calculateFnv1a(payload: ByteArray, magic: Long, version: Int, payloadSize: Int): Long {
+        var hash = 2166136261L and 0xFFFFFFFFL
+        for (byte in payload) {
+            hash = (hash xor (byte.toInt() and 0xFF).toLong()) and 0xFFFFFFFFL
+            hash = (hash * 16777619L) and 0xFFFFFFFFL
         }
-
-        // XOR magic (4 bytes little-endian as uint32)
-        val magicUint = magic and 0xFFFFFFFFL
-        hash = (hash xor magicUint) and 0xFFFFFFFFL
-        hash = (hash * prime) and 0xFFFFFFFFL
-
-        // XOR ((version << 16) | payloadSize)
-        val metaUint = (((version and 0xFFFF).toLong() shl 16) or ((payloadSize and 0xFFFF).toLong())) and 0xFFFFFFFFL
-        hash = (hash xor metaUint) and 0xFFFFFFFFL
-
-        return hash and 0xFFFFFFFFL
+        hash = (hash xor (magic and 0xFFFFFFFFL)) and 0xFFFFFFFFL
+        hash = (hash * 16777619L) and 0xFFFFFFFFL
+        val metadata = ((version and 0xFFFF).toLong() shl 16) or (payloadSize and 0xFFFF).toLong()
+        return (hash xor metadata) and 0xFFFFFFFFL
     }
 
-    /**
-     * Parses an incoming SOURCETX_MODEL: ASCII hex envelope.
-     */
     fun parseEnvelope(
         text: String?,
         expectedSchema: Int = 0,
         expectedPayloadSize: Int = 0
     ): ParseResult<SourceTxModelEnvelope> {
-        if (text.isNullOrBlank()) {
-            return ParseResult.Error("The model file is empty.")
-        }
-
+        if (text.isNullOrBlank()) return ParseResult.Error("The model backup is empty.")
         val content = text.trim()
         if (!content.startsWith(MODEL_PREFIX, ignoreCase = true)) {
             return ParseResult.Error("This is not a recognized SourceTX model backup.")
         }
-
         val hex = content.substring(MODEL_PREFIX.length).trim()
-        if (hex.length < 24 || hex.length > 131094 || (hex.length % 2) != 0) {
-            return ParseResult.Error("The backup has an invalid size and may be damaged.")
+        if (hex.length < 24 || hex.length > 131094 || hex.length % 2 != 0 ||
+            hex.any { it.digitToIntOrNull(16) == null }) {
+            return ParseResult.Error("The model backup contains invalid or damaged data.")
         }
-
-        for (ch in hex) {
-            val validHex = (ch in '0'..'9') || (ch in 'A'..'F') || (ch in 'a'..'f')
-            if (!validHex) {
-                return ParseResult.Error("The backup contains invalid data and may be damaged.")
+        val bytes = try {
+            ByteArray(hex.length / 2) { index ->
+                hex.substring(index * 2, index * 2 + 2).toInt(16).toByte()
             }
+        } catch (_: Exception) {
+            return ParseResult.Error("The model backup contains invalid hexadecimal data.")
         }
+        if (bytes.size < 12) return ParseResult.Error("The model backup is incomplete.")
 
-        val bytes = ByteArray(hex.length / 2)
-        for (i in bytes.indices) {
-            bytes[i] = hex.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+        val header = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        val magic = header.int.toLong() and 0xFFFFFFFFL
+        val schema = header.short.toInt() and 0xFFFF
+        val payloadSize = header.short.toInt() and 0xFFFF
+        if (magic != TRANSFER_MAGIC) return ParseResult.Error("This is not a compatible SourceTX model backup.")
+        if (payloadSize == 0 || bytes.size != 12 + payloadSize) {
+            return ParseResult.Error("The model backup is incomplete or damaged.")
         }
-
-        if (bytes.size < 12) {
-            return ParseResult.Error("The backup is incomplete.")
-        }
-
-        val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-        val magic = buffer.int.toLong() and 0xFFFFFFFFL
-        val schema = buffer.short.toInt() and 0xFFFF
-        val payloadSize = buffer.short.toInt() and 0xFFFF
-
-        if (magic != TRANSFER_MAGIC) {
-            return ParseResult.Error("This is not a compatible SourceTX model backup.")
-        }
-
-        if (bytes.size != 12 + payloadSize) {
-            return ParseResult.Error("The backup is incomplete or damaged.")
-        }
-
-        if (payloadSize == 0) {
-            return ParseResult.Error("The backup contains no model data and cannot be restored.")
-        }
-
         if (expectedSchema > 0 && schema != expectedSchema) {
-            return ParseResult.Error("The backup was created by an incompatible SourceTX firmware version ($schema vs expected $expectedSchema).")
+            return ParseResult.Error("This backup uses model schema $schema; the transmitter requires schema $expectedSchema.")
         }
-
         if (expectedPayloadSize > 0 && payloadSize != expectedPayloadSize) {
-            return ParseResult.Error("The backup does not match the connected transmitter firmware payload size ($payloadSize vs $expectedPayloadSize).")
+            return ParseResult.Error("This backup has a $payloadSize-byte model; the transmitter requires $expectedPayloadSize bytes.")
         }
 
-        val payload = ByteArray(payloadSize)
-        System.arraycopy(bytes, 8, payload, 0, payloadSize)
-
+        val payload = bytes.copyOfRange(8, 8 + payloadSize)
         val storedChecksum = ByteBuffer.wrap(bytes, bytes.size - 4, 4)
             .order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
-
         val calculatedChecksum = calculateFnv1a(payload, magic, schema, payloadSize)
         if (storedChecksum != calculatedChecksum) {
-            return ParseResult.Error("The backup failed its integrity check (Checksum mismatch: 0x${storedChecksum.toString(16)} vs 0x${calculatedChecksum.toString(16)}).")
+            return ParseResult.Error("The model backup failed its integrity check and may be damaged or modified.")
         }
-
-        val rawNameBytes = ByteArray(min(16, payload.size))
-        System.arraycopy(payload, 0, rawNameBytes, 0, rawNameBytes.size)
-        val rawName = String(rawNameBytes, Charsets.US_ASCII).trim { it == '\u0000' || it.isWhitespace() }
-        val modelName = if (rawName.isBlank()) "Unnamed Model" else rawName
-
+        val rawName = String(payload.copyOfRange(0, min(16, payload.size)), Charsets.US_ASCII)
+            .trim { it == '\u0000' || it.isWhitespace() }
+        val normalizedHex = hex.uppercase(Locale.ROOT)
         return ParseResult.Success(
             SourceTxModelEnvelope(
-                text = "$MODEL_PREFIX${hex.uppercase(Locale.ROOT)}",
-                hex = hex.uppercase(Locale.ROOT),
+                text = "$MODEL_PREFIX$normalizedHex",
+                hex = normalizedHex,
                 magic = magic,
                 schema = schema,
                 payloadSize = payloadSize,
                 payload = payload,
                 checksum = storedChecksum,
-                modelName = modelName
+                modelName = rawName.ifBlank { "Unnamed Model" }
             )
         )
     }
 
-    /**
-     * Creates a complete SourceTX model bundle from a list of slots and envelopes.
-     */
     fun createBundle(
         models: Map<Int, SourceTxModelEnvelope>,
         activeModel: Int,
         protocolVersion: Int
     ): ParseResult<SourceTxModelBundle> {
-        if (models.isEmpty()) {
-            return ParseResult.Error("No models were provided for backup.")
+        if (models.isEmpty() || models.size > MAXIMUM_MODELS) {
+            return ParseResult.Error("No valid models were provided for the complete backup.")
         }
-
-        val entries = models.entries.sortedBy { it.key }.map {
-            SourceTxModelBundleEntry(
-                slot = it.key,
-                name = it.value.modelName,
-                envelope = it.value.text
-            )
+        val expectedSlots = (1..models.size).toSet()
+        if (models.keys != expectedSlots || activeModel !in expectedSlots || protocolVersion < 1) {
+            return ParseResult.Error("The transmitter returned an incomplete or invalid model list.")
         }
-
-        val firstEnvelope = models.values.first()
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+        val first = models.getValue(1)
+        if (models.values.any { it.schema != first.schema || it.payloadSize != first.payloadSize }) {
+            return ParseResult.Error("The exported models do not use one compatible storage schema.")
+        }
+        val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
-        }
-
+        }.format(Date())
         val bundle = SourceTxModelBundle(
             format = BUNDLE_FORMAT,
             version = BUNDLE_VERSION,
             protocol = protocolVersion,
-            schema = firstEnvelope.schema,
-            payloadSize = firstEnvelope.payloadSize,
-            modelCount = entries.size,
+            schema = first.schema,
+            payloadSize = first.payloadSize,
+            modelCount = models.size,
             activeModel = activeModel,
-            createdUtc = dateFormat.format(Date()),
-            models = entries
+            createdUtc = timestamp,
+            models = models.entries.sortedBy { it.key }.map { (slot, envelope) ->
+                SourceTxModelBundleEntry(slot, envelope.modelName, envelope.text)
+            }
         )
         bundle.checksumSha256 = calculateBundleChecksum(bundle)
         return ParseResult.Success(bundle)
     }
 
-    /**
-     * Calculates SHA-256 digest over normalized slot entries in the bundle.
-     */
+    /** Canonical form intentionally matches the Windows Companion byte-for-byte. */
     fun calculateBundleChecksum(bundle: SourceTxModelBundle): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val builder = StringBuilder()
-        builder.append("${bundle.format}|${bundle.version}|${bundle.schema}|${bundle.payloadSize}|${bundle.modelCount}\n")
-        for (entry in bundle.models.sortedBy { it.slot }) {
-            builder.append("${entry.slot}:${entry.name}:${entry.envelope.trim()}\n")
-        }
-        val hashBytes = digest.digest(builder.toString().toByteArray(Charsets.UTF_8))
-        return hashBytes.joinToString("") { "%02x".format(it) }
-    }
-
-    /**
-     * Serializes a bundle to a JSON string.
-     */
-    fun serializeBundle(bundle: SourceTxModelBundle): String {
-        val root = JSONObject()
-        root.put("format", bundle.format)
-        root.put("version", bundle.version)
-        root.put("protocol", bundle.protocol)
-        root.put("schema", bundle.schema)
-        root.put("payload_size", bundle.payloadSize)
-        root.put("model_count", bundle.modelCount)
-        root.put("active_model", bundle.activeModel)
-        root.put("created_utc", bundle.createdUtc)
-        root.put("checksum_sha256", bundle.checksumSha256)
-
-        val modelsArray = JSONArray()
-        for (entry in bundle.models) {
-            val entryObj = JSONObject()
-            entryObj.put("slot", entry.slot)
-            entryObj.put("name", entry.name)
-            entryObj.put("envelope", entry.envelope)
-            modelsArray.put(entryObj)
-        }
-        root.put("models", modelsArray)
-        return root.toString(2)
-    }
-
-    /**
-     * Deserializes and validates a JSON model bundle.
-     */
-    fun parseBundle(json: String): ParseResult<Pair<SourceTxModelBundle, List<SourceTxModelEnvelope>>> {
-        if (json.isBlank()) {
-            return ParseResult.Error("The bundle file is empty.")
-        }
-
-        try {
-            val root = JSONObject(json)
-            val format = root.optString("format", "")
-            val version = root.optInt("version", 0)
-            val protocol = root.optInt("protocol", 0)
-            val schema = root.optInt("schema", 0)
-            val payloadSize = root.optInt("payload_size", 0)
-            val modelCount = root.optInt("model_count", 0)
-            val activeModel = root.optInt("active_model", 1)
-            val createdUtc = root.optString("created_utc", "")
-            val checksumSha256 = root.optString("checksum_sha256", "")
-            val modelsArray = root.optJSONArray("models")
-
-            if (format != BUNDLE_FORMAT || version != BUNDLE_VERSION || modelsArray == null) {
-                return ParseResult.Error("This is not a supported SourceTX model bundle.")
+        val canonical = buildString {
+            append(bundle.format).append('|')
+            append(bundle.version).append('|')
+            append(bundle.protocol).append('|')
+            append(bundle.schema).append('|')
+            append(bundle.payloadSize).append('|')
+            append(bundle.modelCount).append('|')
+            append(bundle.activeModel).append('|')
+            bundle.models.sortedBy { it.slot }.forEach { entry ->
+                append(entry.slot).append(':')
+                append(entry.envelope.trim().uppercase(Locale.ROOT)).append('|')
             }
+        }
+        return MessageDigest.getInstance("SHA-256")
+            .digest(canonical.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
 
-            if (modelCount < 1 || modelCount > MAXIMUM_MODELS || modelsArray.length() != modelCount) {
-                return ParseResult.Error("The bundle model count is invalid or does not match contents.")
+    /** Writes the public Windows-compatible PascalCase .stxb schema. */
+    fun serializeBundle(bundle: SourceTxModelBundle): String = JSONObject().apply {
+        put("Format", bundle.format)
+        put("Version", bundle.version)
+        put("Protocol", bundle.protocol)
+        put("Schema", bundle.schema)
+        put("PayloadSize", bundle.payloadSize)
+        put("ModelCount", bundle.modelCount)
+        put("ActiveModel", bundle.activeModel)
+        put("CreatedUtc", bundle.createdUtc)
+        put("ChecksumSha256", bundle.checksumSha256)
+        put("Models", JSONArray().apply {
+            bundle.models.sortedBy { it.slot }.forEach { entry ->
+                put(JSONObject().apply {
+                    put("Slot", entry.slot)
+                    put("Name", entry.name)
+                    put("Envelope", entry.envelope)
+                })
+            }
+        })
+    }.toString()
+
+    fun parseBundle(json: String): ParseResult<Pair<SourceTxModelBundle, List<SourceTxModelEnvelope>>> {
+        if (json.isBlank()) return ParseResult.Error("The complete backup is empty.")
+        return try {
+            val root = JSONObject(json)
+            fun string(vararg names: String): String = names.firstNotNullOfOrNull { name ->
+                if (root.has(name) && !root.isNull(name)) root.getString(name) else null
+            }.orEmpty()
+            fun integer(vararg names: String): Int = names.firstNotNullOfOrNull { name ->
+                if (root.has(name) && !root.isNull(name)) root.optInt(name) else null
+            } ?: 0
+            fun array(vararg names: String): JSONArray? = names.firstNotNullOfOrNull { root.optJSONArray(it) }
+
+            val format = string("Format", "format")
+            val version = integer("Version", "version")
+            val protocol = integer("Protocol", "protocol")
+            val schema = integer("Schema", "schema")
+            val payloadSize = integer("PayloadSize", "payload_size")
+            val modelCount = integer("ModelCount", "model_count")
+            val activeModel = integer("ActiveModel", "active_model")
+            val createdUtc = string("CreatedUtc", "created_utc")
+            val checksum = string("ChecksumSha256", "checksum_sha256")
+            val modelsArray = array("Models", "models")
+                ?: return ParseResult.Error("This is not a supported SourceTX complete backup.")
+
+            if (format != BUNDLE_FORMAT || version != BUNDLE_VERSION || protocol < 1 ||
+                schema < 1 || payloadSize < 1 || modelCount !in 1..MAXIMUM_MODELS ||
+                activeModel !in 1..modelCount || modelsArray.length() != modelCount ||
+                !Regex("^[0-9a-fA-F]{64}$").matches(checksum)) {
+                return ParseResult.Error("The complete backup contains invalid model information.")
             }
 
             val entries = mutableListOf<SourceTxModelBundleEntry>()
             val envelopes = mutableListOf<SourceTxModelEnvelope>()
             val seenSlots = mutableSetOf<Int>()
-
-            for (i in 0 until modelsArray.length()) {
-                val item = modelsArray.getJSONObject(i)
-                val slot = item.getInt("slot")
-                val name = item.getString("name")
-                val envelopeText = item.getString("envelope")
-
-                if (slot < 1 || slot > MAXIMUM_MODELS || !seenSlots.add(slot)) {
-                    return ParseResult.Error("The bundle contains duplicate or out-of-range model slots.")
+            for (index in 0 until modelsArray.length()) {
+                val item = modelsArray.optJSONObject(index)
+                    ?: return ParseResult.Error("The complete backup contains a damaged model entry.")
+                fun entryString(vararg names: String): String = names.firstNotNullOfOrNull { name ->
+                    if (item.has(name) && !item.isNull(name)) item.getString(name) else null
+                }.orEmpty()
+                fun entryInt(vararg names: String): Int = names.firstNotNullOfOrNull { name ->
+                    if (item.has(name) && !item.isNull(name)) item.optInt(name) else null
+                } ?: 0
+                val slot = entryInt("Slot", "slot")
+                val envelopeText = entryString("Envelope", "envelope")
+                if (slot !in 1..modelCount || !seenSlots.add(slot)) {
+                    return ParseResult.Error("The complete backup contains repeated or out-of-range model slots.")
                 }
-
-                when (val envResult = parseEnvelope(envelopeText, schema, payloadSize)) {
-                    is ParseResult.Error -> return ParseResult.Error("Bundle slot $slot error: ${envResult.message}")
+                when (val parsed = parseEnvelope(envelopeText, schema, payloadSize)) {
+                    is ParseResult.Error -> return ParseResult.Error("Slot $slot: ${parsed.message}")
                     is ParseResult.Success -> {
-                        entries.add(SourceTxModelBundleEntry(slot, name, envelopeText))
-                        envelopes.add(envResult.data)
+                        val suppliedName = entryString("Name", "name")
+                        entries += SourceTxModelBundleEntry(slot, suppliedName.ifBlank { parsed.data.modelName }, parsed.data.text)
+                        envelopes += parsed.data
                     }
                 }
             }
-
-            val bundle = SourceTxModelBundle(
-                format = format,
-                version = version,
-                protocol = protocol,
-                schema = schema,
-                payloadSize = payloadSize,
-                modelCount = modelCount,
-                activeModel = activeModel,
-                createdUtc = createdUtc,
-                checksumSha256 = checksumSha256,
-                models = entries
-            )
-
-            if (checksumSha256.isNotBlank()) {
-                val calculated = calculateBundleChecksum(bundle)
-                if (!calculated.equals(checksumSha256, ignoreCase = true)) {
-                    return ParseResult.Error("The bundle failed SHA-256 integrity verification.")
-                }
+            if (seenSlots != (1..modelCount).toSet()) {
+                return ParseResult.Error("The complete backup is missing one or more model slots.")
             }
-
-            return ParseResult.Success(Pair(bundle, envelopes))
-        } catch (ex: Exception) {
-            return ParseResult.Error("Failed to parse bundle JSON: ${ex.localizedMessage}")
+            val orderedEntries = entries.sortedBy { it.slot }
+            val orderedEnvelopes = entries.zip(envelopes).sortedBy { it.first.slot }.map { it.second }
+            val bundle = SourceTxModelBundle(
+                format, version, protocol, schema, payloadSize, modelCount,
+                activeModel, createdUtc, checksum, orderedEntries
+            )
+            if (!MessageDigest.isEqual(
+                    checksum.lowercase(Locale.ROOT).toByteArray(Charsets.US_ASCII),
+                    calculateBundleChecksum(bundle).toByteArray(Charsets.US_ASCII)
+                )) {
+                return ParseResult.Error("The complete backup failed its SHA-256 integrity check.")
+            }
+            ParseResult.Success(bundle to orderedEnvelopes)
+        } catch (_: Exception) {
+            ParseResult.Error("This complete backup is damaged or is not valid SourceTX data.")
         }
     }
 }

@@ -9,3 +9,20 @@
 .cxx
 local.properties
 /app/build
+
+# Signing keys and local release credentials must never enter source control.
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+.env
+.env.*
+
+# Generated packages belong in immutable GitHub releases, not the source tree.
+*.apk
+*.aab
+*.apks
+
+# Local tooling output
+lint-results*.html
+*.log

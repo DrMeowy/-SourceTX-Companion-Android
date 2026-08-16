@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">SourceTX</string>
+    <string name="app_name">SourceTX Companion</string>
     <string name="title_home">SourceTX Companion</string>
     <string name="subtitle_home">Install, update, and back up your SourceTX transmitter</string>
 
@@ -10,7 +10,7 @@
 
     <string name="card_update_title">Update or Repair</string>
     <string name="card_update_subtitle">For an existing SourceTX transmitter</string>
-    <string name="card_update_desc">Install the stable firmware included with this Companion. A regular update keeps your saved models and settings.</string>
+    <string name="card_update_desc">Download and verify the signed stable SourceTX release. An application update keeps compatible saved models and settings.</string>
     <string name="card_update_action">Update SourceTX</string>
 
     <string name="card_config_title">Configure Transmitter</string>

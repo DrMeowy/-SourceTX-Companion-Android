@@ -20,11 +20,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -58,10 +60,8 @@ fun InstallScreen(
 ) {
     val colors = SourceTxTheme.colors
     var eraseFlash by remember { mutableStateOf(false) }
+    var showConfirmation by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
-
-    val activeBoard = catalog?.boards?.firstOrNull { it.enabled }
-    val activeDisplay = catalog?.displays?.firstOrNull { it.enabled }
 
     Column(
         modifier = Modifier
@@ -280,7 +280,7 @@ fun InstallScreen(
 
         // Action Button
         Button(
-            onClick = { onStartInstall(eraseFlash) },
+            onClick = { showConfirmation = true },
             enabled = isConnected && !isFlashing,
             modifier = Modifier
                 .fillMaxWidth()
@@ -309,5 +309,30 @@ fun InstallScreen(
                 )
             }
         }
+    }
+
+    if (showConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showConfirmation = false },
+            title = { Text(if (eraseFlash) "Erase and Install SourceTX?" else "Install SourceTX?") },
+            text = {
+                Text(
+                    if (eraseFlash) {
+                        "This permanently erases every saved model and transmitter setting, then installs the verified stable SourceTX release. Keep USB connected until completion."
+                    } else {
+                        "Install the verified stable SourceTX release on the connected ESP32-S3? Existing flash sectors used by the image will be replaced. Keep USB connected until completion."
+                    }
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showConfirmation = false
+                    onStartInstall(eraseFlash)
+                }) { Text(if (eraseFlash) "Erase & Install" else "Install") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showConfirmation = false }) { Text("Cancel") }
+            }
+        )
     }
 }

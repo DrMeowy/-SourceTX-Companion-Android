@@ -1,0 +1,40 @@
+name: Android CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Test, lint, and build debug APK
+        run: ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace --no-daemon
+
+      - name: Upload debug APK for CI inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: SourceTX-Companion-Android-debug-${{ github.sha }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14

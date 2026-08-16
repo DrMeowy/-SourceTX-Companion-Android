@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
+import java.io.ByteArrayOutputStream
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import com.sourcetx.companion.ui.components.AppUpdateDialog
 import com.sourcetx.companion.ui.components.SourceTxStatusBar
@@ -41,6 +43,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var pendingBackupContent: String? = null
+    private val backupSaverLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri: Uri? ->
+        val content = pendingBackupContent
+        pendingBackupContent = null
+        if (uri == null || content == null) return@registerForActivityResult
+        try {
+            contentResolver.openOutputStream(uri, "wt")?.use { output ->
+                output.write(content.toByteArray(Charsets.UTF_8))
+            } ?: error("Android could not open the selected destination.")
+            Toast.makeText(this, "SourceTX backup saved.", Toast.LENGTH_SHORT).show()
+        } catch (error: Exception) {
+            Toast.makeText(this, "Could not save backup: ${error.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -59,6 +78,13 @@ class MainActivity : ComponentActivity() {
             val downloadPercent by viewModel.appUpdateDownloadPercent.collectAsState()
             val updateError by viewModel.appUpdateErrorMessage.collectAsState()
 
+            LaunchedEffect(updateError, showUpdateDialog) {
+                if (updateError != null && !showUpdateDialog) {
+                    Toast.makeText(this@MainActivity, updateError, Toast.LENGTH_LONG).show()
+                    viewModel.consumeAppUpdateError()
+                }
+            }
+
             // Flashing state
             val isFlashing by viewModel.isFlashing.collectAsState()
             val flashPercent by viewModel.flashPercent.collectAsState()
@@ -70,13 +96,13 @@ class MainActivity : ComponentActivity() {
             // Backup state
             val isExporting by viewModel.isExporting.collectAsState()
             val exportProgress by viewModel.exportProgress.collectAsState()
-            val exportedModels by viewModel.exportedModels.collectAsState()
+            val preparedBackup by viewModel.preparedBackup.collectAsState()
             val backupError by viewModel.backupErrorMessage.collectAsState()
 
             // Restore state
-            val loadedEnvelope by viewModel.loadedEnvelope.collectAsState()
-            val loadedFileName by viewModel.loadedFileName.collectAsState()
+            val loadedBackup by viewModel.loadedBackup.collectAsState()
             val isRestoring by viewModel.isRestoring.collectAsState()
+            val restoreProgress by viewModel.restoreProgress.collectAsState()
             val restoreSuccess by viewModel.restoreSuccessMessage.collectAsState()
             val restoreError by viewModel.restoreErrorMessage.collectAsState()
 
@@ -122,7 +148,7 @@ class MainActivity : ComponentActivity() {
                             AppScreen.INSTALL -> {
                                 InstallScreen(
                                     catalog = catalog,
-                                    isConnected = connectedDevice != null && hasPermission,
+                                    isConnected = connectedDevice?.isEspressif == true && hasPermission,
                                     isFlashing = isFlashing,
                                     flashPercent = flashPercent,
                                     flashStatusText = flashStatusText,
@@ -135,7 +161,7 @@ class MainActivity : ComponentActivity() {
                             AppScreen.UPDATE -> {
                                 UpdateScreen(
                                     catalog = catalog,
-                                    isConnected = connectedDevice != null && hasPermission,
+                                    isConnected = connectedDevice?.isEspressif == true && hasPermission,
                                     isFlashing = isFlashing,
                                     flashPercent = flashPercent,
                                     flashStatusText = flashStatusText,
@@ -150,18 +176,18 @@ class MainActivity : ComponentActivity() {
                                     isConnected = connectedDevice != null && hasPermission,
                                     isExporting = isExporting,
                                     exportProgress = exportProgress,
-                                    exportedModels = exportedModels,
+                                    preparedBackup = preparedBackup,
                                     errorMessage = backupError,
                                     onStartExport = { exportAll -> viewModel.startExport(exportAll) },
-                                    onShareBackup = { content, filename -> shareBackupFile(content, filename) }
+                                    onSaveBackup = { content, filename -> saveBackupFile(content, filename) }
                                 )
                             }
                             AppScreen.RESTORE -> {
                                 RestoreScreen(
                                     isConnected = connectedDevice != null && hasPermission,
-                                    loadedEnvelope = loadedEnvelope,
-                                    loadedFileName = loadedFileName,
+                                    loadedBackup = loadedBackup,
                                     isRestoring = isRestoring,
+                                    restoreProgress = restoreProgress,
                                     restoreSuccessMessage = restoreSuccess,
                                     errorMessage = restoreError,
                                     onPickFile = { filePickerLauncher.launch("*/*") },
@@ -197,22 +223,28 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val content = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
-            viewModel.loadFileForRestore(uri, content, fileName)
+            val content = contentResolver.openInputStream(uri)?.use { input ->
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                var total = 0
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    total += read
+                    if (total > 8 * 1024 * 1024) error("Backup files are limited to 8 MB.")
+                    output.write(buffer, 0, read)
+                }
+                output.toString(Charsets.UTF_8.name())
+            } ?: error("Android could not open the selected backup.")
+            viewModel.loadFileForRestore(content, fileName)
         } catch (e: Exception) {
             Toast.makeText(this, "Failed to read file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         }
     }
 
-    private fun shareBackupFile(content: String, filename: String) {
-        val sendIntent = Intent().apply {
-            action = Intent.ACTION_SEND
-            putExtra(Intent.EXTRA_TEXT, content)
-            putExtra(Intent.EXTRA_TITLE, filename)
-            type = "text/plain"
-        }
-        val shareIntent = Intent.createChooser(sendIntent, "Save or Share SourceTX Backup")
-        startActivity(shareIntent)
+    private fun saveBackupFile(content: String, filename: String) {
+        pendingBackupContent = content
+        backupSaverLauncher.launch(filename)
     }
 
     private fun openGitHubIssues() {

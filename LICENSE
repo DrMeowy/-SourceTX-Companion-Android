@@ -1,0 +1,113 @@
+SourceTX Personal and Non-Commercial License
+Version 1.0
+
+Copyright (c) 2026 Viktoras Kolyšnicinas
+
+1. Definitions
+
+"Software" means the SourceTX source code, firmware, documentation, build
+files, configuration files, and other materials in this repository that are
+owned or controlled by the Copyright Holder. Third-party materials are not
+covered by this license and remain subject to their own licenses and notices.
+
+"You" means the person or organization exercising rights under this license.
+
+"Commercial Use" means any use that is intended for or connected with revenue,
+sale, lease, rental, paid distribution, paid support, paid services,
+manufacturing for another party, internal business operations, or inclusion in
+a product or service offered by a business or other organization.
+
+2. Personal and Non-Commercial Permission
+
+Subject to this license, the Copyright Holder grants You a worldwide,
+non-exclusive, royalty-free, non-transferable license to:
+
+  a. view and inspect the Software;
+  b. copy, modify, compile, execute, and use the Software for personal,
+     hobbyist, educational, or other strictly non-commercial purposes; and
+  c. share unmodified or modified copies of the Software, including compiled
+     copies, without charge, provided that You preserve this license and all
+     copyright, attribution, and disclaimer notices.
+
+This permission does not grant any Commercial Use rights.
+
+3. Prohibited Uses
+
+You may not, without a separate written commercial license from the Copyright
+Holder:
+
+  a. sell, offer for sale, rent, lease, sublicense, or otherwise commercially
+     distribute the Software or a product containing it;
+  b. manufacture, commission, or arrange manufacture of transmitters,
+     receivers, modules, firmware, or other products containing or derived
+     from the Software for sale or other commercial distribution;
+  c. use the Software to provide paid services, paid support, consulting,
+     hosted services, or other revenue-generating services;
+  d. use the Software in the internal operations of a business or organization;
+  e. remove or alter copyright, license, safety, or attribution notices; or
+  f. imply that a modified version, product, or service is official SourceTX
+     hardware, firmware, or support.
+
+4. Commercial Licensing
+
+Commercial Use is reserved to the Copyright Holder and parties expressly
+authorized by the Copyright Holder under a separate written agreement. A
+commercial license may contain per-unit fees, royalties, subscription fees,
+territory limits, support terms, source-access terms, and other conditions.
+
+No payment, donation, hardware purchase, or access to this repository grants
+Commercial Use rights unless a separate written commercial agreement says so.
+
+5. Trademarks and Branding
+
+This license does not grant permission to use the names "SourceTX", related
+logos, product names, or other trademarks or trade dress of the Copyright
+Holder. A modified version must use a different product name and must not be
+presented as an official SourceTX product without written permission.
+
+6. Contributions
+
+The Copyright Holder may accept contributions only under terms that preserve
+the Copyright Holder's ability to offer separate commercial licenses. Before
+accepting third-party contributions, the project should publish and use a
+Contributor License Agreement or obtain an equivalent copyright grant. A
+contributor retains rights in their contribution unless a separate agreement
+states otherwise.
+
+7. Termination
+
+Your rights under this license terminate automatically if You violate its
+terms. Upon termination, You must stop exercising the rights granted by this
+license and stop distributing the Software, except where applicable law
+requires otherwise. Rights may be restored only by written permission from the
+Copyright Holder.
+
+8. Disclaimer of Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS" AND WITHOUT WARRANTIES OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, TITLE, AND NON-INFRINGEMENT. YOU ARE RESPONSIBLE FOR TESTING, CONFIGURING,
+AND SAFELY OPERATING ANY HARDWARE OR VEHICLE USING THE SOFTWARE. THE SOFTWARE
+IS NOT DESIGNED OR WARRANTED FOR LIFE-SAFETY, MEDICAL, AVIATION, OR OTHER
+SAFETY-CRITICAL USE.
+
+9. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE COPYRIGHT HOLDER AND CONTRIBUTORS
+WILL NOT BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY,
+CONSEQUENTIAL, OR OTHER DAMAGES ARISING FROM OR RELATED TO THE SOFTWARE OR ITS
+USE, INCLUDING PROPERTY DAMAGE, PERSONAL INJURY, LOSS OF DATA, LOSS OF PROFITS,
+OR LOSS OF BUSINESS, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+10. Reservation of Rights
+
+All rights not expressly granted by this license are reserved by the Copyright
+Holder. This license does not transfer ownership of the Software, patents,
+trademarks, hardware designs, or any other intellectual-property rights.
+
+11. Third-Party Materials
+
+You must comply with the applicable license terms for all third-party
+software, libraries, assets, protocols, and documentation included with or
+used by the Software. Those terms may grant rights or impose obligations that
+are separate from this license.

@@ -20,7 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -39,19 +39,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.sourcetx.companion.protocol.SourceTxModelEnvelope
 import com.sourcetx.companion.ui.theme.GreenSuccess
 import com.sourcetx.companion.ui.theme.SourceTxTheme
+import com.sourcetx.companion.viewmodel.PreparedModelBackup
 
 @Composable
 fun BackupScreen(
     isConnected: Boolean,
     isExporting: Boolean,
     exportProgress: Pair<Int, Int>?,
-    exportedModels: Map<Int, SourceTxModelEnvelope>?,
+    preparedBackup: PreparedModelBackup?,
     errorMessage: String?,
     onStartExport: (exportAll: Boolean) -> Unit,
-    onShareBackup: (content: String, filename: String) -> Unit
+    onSaveBackup: (content: String, filename: String) -> Unit
 ) {
     val colors = SourceTxTheme.colors
     var exportAll by remember { mutableStateOf(false) }
@@ -213,7 +213,7 @@ fun BackupScreen(
         }
 
         // Export Results
-        if (exportedModels != null && exportedModels.isNotEmpty()) {
+        if (preparedBackup != null && preparedBackup.models.isNotEmpty()) {
             Spacer(modifier = Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -229,7 +229,7 @@ fun BackupScreen(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Exported ${exportedModels.size} Model(s)",
+                        text = "Verified ${preparedBackup.models.size} Model(s)",
                         color = colors.textPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
@@ -237,20 +237,7 @@ fun BackupScreen(
                 }
 
                 Button(
-                    onClick = {
-                        val filename = if (exportedModels.size == 1) {
-                            "${exportedModels.values.first().modelName.replace(" ", "_")}.stxm"
-                        } else {
-                            "SourceTX_Full_Backup.stxb"
-                        }
-                        val content = if (exportedModels.size == 1) {
-                            exportedModels.values.first().text
-                        } else {
-                            // JSON bundle
-                            exportedModels.values.first().text
-                        }
-                        onShareBackup(content, filename)
-                    },
+                    onClick = { onSaveBackup(preparedBackup.content, preparedBackup.fileName) },
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = colors.surfaceElevated,
@@ -258,12 +245,12 @@ fun BackupScreen(
                     )
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = "Share",
+                        imageVector = Icons.Default.Save,
+                        contentDescription = "Save",
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "Save / Share", fontSize = 12.sp)
+                    Text(text = "Save Backup", fontSize = 12.sp)
                 }
             }
 
@@ -273,7 +260,7 @@ fun BackupScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(exportedModels.entries.toList()) { entry ->
+                items(preparedBackup.models.entries.toList()) { entry ->
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()

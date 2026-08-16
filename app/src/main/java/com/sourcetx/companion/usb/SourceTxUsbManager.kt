@@ -8,6 +8,8 @@ import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
+import androidx.core.content.ContextCompat
+import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
@@ -20,13 +22,15 @@ data class UsbDeviceInfo(
     val vendorId: Int,
     val productId: Int,
     val productName: String,
-    val manufacturerName: String
+    val manufacturerName: String,
+    val isEspressif: Boolean
 )
 
 class SourceTxUsbManager(private val context: Context) {
     companion object {
         const val ACTION_USB_PERMISSION = "com.sourcetx.companion.USB_PERMISSION"
         const val ESPRESSIF_VID = 0x303A
+        const val ESPRESSIF_USB_SERIAL_JTAG_PID = 0x1001
     }
 
     private val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
@@ -80,11 +84,12 @@ class SourceTxUsbManager(private val context: Context) {
             addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
             addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(usbReceiver, filter)
-        }
+        ContextCompat.registerReceiver(
+            context,
+            usbReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         scanDevices()
     }
 
@@ -96,9 +101,17 @@ class SourceTxUsbManager(private val context: Context) {
     }
 
     fun scanDevices(): List<UsbSerialDriver> {
-        val availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
+        val probeTable = UsbSerialProber.getDefaultProbeTable().apply {
+            // ESP32-S3 native USB Serial/JTAG uses vendor-class descriptors, so
+            // the library's normal CDC interface-class probe cannot discover it.
+            addProduct(ESPRESSIF_VID, ESPRESSIF_USB_SERIAL_JTAG_PID, CdcAcmSerialDriver::class.java)
+        }
+        val availableDrivers = UsbSerialProber(probeTable).findAllDrivers(usbManager)
         if (availableDrivers.isNotEmpty()) {
-            val driver = availableDrivers[0]
+            val driver = availableDrivers.sortedWith(
+                compareByDescending<UsbSerialDriver> { it.device.vendorId == ESPRESSIF_VID }
+                    .thenBy { it.device.deviceId }
+            ).first()
             val device = driver.device
             activeDriver = driver
             updateDeviceInfo(device)
@@ -110,6 +123,7 @@ class SourceTxUsbManager(private val context: Context) {
                 requestPermission(device)
             }
         } else {
+            activeDriver = null
             _connectedDevice.value = null
             _hasPermission.value = false
         }
@@ -123,7 +137,10 @@ class SourceTxUsbManager(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT
         }
         val permissionIntent = PendingIntent.getBroadcast(
-            context, 0, Intent(ACTION_USB_PERMISSION), flags
+            context,
+            0,
+            Intent(ACTION_USB_PERMISSION).setPackage(context.packageName),
+            flags
         )
         usbManager.requestPermission(device, permissionIntent)
     }
@@ -133,23 +150,31 @@ class SourceTxUsbManager(private val context: Context) {
             deviceName = device.deviceName,
             vendorId = device.vendorId,
             productId = device.productId,
-            productName = device.productName ?: "SourceTX Transmitter",
-            manufacturerName = device.manufacturerName ?: "Espressif"
+            productName = device.productName ?: "USB serial device",
+            manufacturerName = device.manufacturerName ?: "Unknown manufacturer",
+            isEspressif = device.vendorId == ESPRESSIF_VID
         )
         _connectedDevice.value = info
     }
 
-    fun openPort(baudRate: Int = 115200): UsbSerialPort? {
+    fun openPort(baudRate: Int = 115200, requireEspressif: Boolean = false): UsbSerialPort? {
         val driver = activeDriver ?: return null
+        if (requireEspressif && driver.device.vendorId != ESPRESSIF_VID) return null
+        if (!usbManager.hasPermission(driver.device)) return null
+        disconnect()
+        val port = driver.ports.firstOrNull() ?: return null
         val connection = usbManager.openDevice(driver.device) ?: return null
-
-        val port = driver.ports[0]
-        port.open(connection)
-        port.setParameters(baudRate, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
-        port.dtr = false
-        port.rts = false
-        activePort = port
-        return port
+        return try {
+            port.open(connection)
+            port.setParameters(baudRate, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+            port.dtr = false
+            port.rts = false
+            activePort = port
+            port
+        } catch (_: Exception) {
+            connection.close()
+            null
+        }
     }
 
     fun disconnect() {
