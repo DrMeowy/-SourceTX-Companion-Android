@@ -30,16 +30,24 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace --no-daemon
+        id: gradle_build
+        run: |
+          ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee build_log.txt
+        continue-on-error: true
 
-      - name: Upload Build Report on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-failure-reports
-          path: |
-            app/build/reports/
-            app/build/outputs/logs/
+      - name: Report Build Output
+        run: |
+          echo "## Gradle Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -n 120 build_log.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          if grep -q "BUILD SUCCESSFUL" build_log.txt; then
+            echo "Build Succeeded!"
+            exit 0
+          else
+            echo "Build Failed!"
+            exit 1
+          fi
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
