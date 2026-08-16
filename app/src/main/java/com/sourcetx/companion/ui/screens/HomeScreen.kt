@@ -1,7 +1,6 @@
 package com.sourcetx.companion.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,14 +9,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.GetApp
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -98,7 +97,7 @@ fun HomeScreen(
                 subtitle = stringResource(R.string.card_update_subtitle),
                 description = stringResource(R.string.card_update_desc),
                 actionText = stringResource(R.string.card_update_action),
-                icon = Icons.Default.Download,
+                icon = Icons.Default.GetApp,
                 iconBgColor = colors.updateBg,
                 iconBorderColor = colors.updateBorder,
                 accentColor = colors.updateAccent,
@@ -155,7 +154,7 @@ fun HomeScreen(
                 subtitle = stringResource(R.string.card_restore_subtitle),
                 description = stringResource(R.string.card_restore_desc),
                 actionText = stringResource(R.string.card_restore_action),
-                icon = Icons.Default.FolderOpen,
+                icon = Icons.Default.Folder,
                 iconBgColor = colors.restoreBg,
                 iconBorderColor = colors.restoreBorder,
                 accentColor = colors.restoreAccent,
