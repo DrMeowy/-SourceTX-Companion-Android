@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -124,7 +124,7 @@ fun RestoreScreen(
                         )
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FolderOpen,
+                            imageVector = Icons.Default.Folder,
                             contentDescription = "Open",
                             modifier = Modifier.size(16.dp)
                         )
