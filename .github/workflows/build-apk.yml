@@ -26,14 +26,20 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.4'
+      - name: Grant Executable Permissions
+        run: chmod +x ./gradlew
 
       - name: Build Debug APK
-        run: |
-          gradle assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Upload Build Report on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-failure-reports
+          path: |
+            app/build/reports/
+            app/build/outputs/logs/
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4

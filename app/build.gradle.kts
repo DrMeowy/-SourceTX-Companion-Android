@@ -64,7 +64,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.material:material-icons-core:1.6.2")
+    implementation("androidx.compose.material:material-icons-extended:1.6.2")
     
     // USB Serial Driver for Android (CDC-ACM, FTDI, CP210x, CH34x)
     implementation("com.github.mik3y:usb-serial-for-android:3.7.0")
