@@ -2,7 +2,6 @@ package com.sourcetx.companion.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,8 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -35,10 +32,7 @@ fun SourceTxTopBar(
     title: String,
     version: String,
     isDarkTheme: Boolean,
-    isCheckingUpdate: Boolean,
-    hasUpdateAvailable: Boolean,
     onToggleTheme: () -> Unit,
-    onCheckUpdate: () -> Unit,
     showBackButton: Boolean = false,
     onBackClick: () -> Unit = {}
 ) {
@@ -47,7 +41,7 @@ fun SourceTxTopBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(52.dp)
             .background(colors.surfaceElevated)
             .border(width = 1.dp, color = colors.border)
             .padding(horizontal = 12.dp),
@@ -98,54 +92,6 @@ fun SourceTxTopBar(
             }
 
             Spacer(modifier = Modifier.weight(1f))
-
-            // Check / Download Update Button
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (hasUpdateAvailable) colors.accent.copy(alpha = 0.2f) else colors.surface)
-                    .border(
-                        1.dp,
-                        if (hasUpdateAvailable) colors.accent else colors.border,
-                        RoundedCornerShape(6.dp)
-                    )
-                    .clickable(enabled = !isCheckingUpdate) { onCheckUpdate() }
-                    .padding(horizontal = 8.dp, vertical = 5.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isCheckingUpdate) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(12.dp),
-                            color = colors.accent,
-                            strokeWidth = 1.5.dp
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Checking...",
-                            color = colors.accent,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.SystemUpdate,
-                            contentDescription = "Update",
-                            tint = if (hasUpdateAvailable) colors.accent else colors.textSecondary,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (hasUpdateAvailable) "Update App" else "Check Update",
-                            color = if (hasUpdateAvailable) colors.accent else colors.textSecondary,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
 
             // Theme Toggle
             IconButton(

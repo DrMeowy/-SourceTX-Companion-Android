@@ -87,10 +87,7 @@ class MainActivity : ComponentActivity() {
                             title = "SourceTX",
                             version = "v${viewModel.currentAppVersion}",
                             isDarkTheme = isDarkTheme,
-                            isCheckingUpdate = isCheckingUpdate,
-                            hasUpdateAvailable = appReleaseInfo?.isNewer == true,
                             onToggleTheme = { viewModel.toggleTheme() },
-                            onCheckUpdate = { viewModel.checkForAppUpdate(silent = false) },
                             showBackButton = currentScreen != AppScreen.HOME,
                             onBackClick = { viewModel.navigateTo(AppScreen.HOME) }
                         )
@@ -98,7 +95,12 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         SourceTxStatusBar(
                             connectedDevice = connectedDevice,
-                            hasPermission = hasPermission
+                            hasPermission = hasPermission,
+                            version = "v${viewModel.currentAppVersion}",
+                            isCheckingUpdate = isCheckingUpdate,
+                            hasUpdateAvailable = appReleaseInfo?.isNewer == true,
+                            onCheckUpdate = { viewModel.checkForAppUpdate(silent = false) },
+                            onReportBug = { openGitHubIssues() }
                         )
                     }
                 ) { innerPadding ->
@@ -211,5 +213,13 @@ class MainActivity : ComponentActivity() {
         }
         val shareIntent = Intent.createChooser(sendIntent, "Save or Share SourceTX Backup")
         startActivity(shareIntent)
+    }
+
+    private fun openGitHubIssues() {
+        val intent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("https://github.com/DrMeowy/-SourceTX-Companion-Android/issues")
+        )
+        startActivity(intent)
     }
 }
