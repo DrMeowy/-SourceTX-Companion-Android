@@ -30,19 +30,16 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build Debug APK
-        id: gradle_build
         run: |
-          ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee build_log.txt
-        continue-on-error: true
+          ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee build_log.txt || true
 
-      - name: Report Build Output
+      - name: Emit Annotations and Check Result
         run: |
-          echo "## Gradle Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -n 120 build_log.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -E "e: |FAILURE:|error:" build_log.txt | while IFS= read -r line; do
+            echo "::error::$line"
+          done
           if grep -q "BUILD SUCCESSFUL" build_log.txt; then
-            echo "Build Succeeded!"
+            echo "Build Successful!"
             exit 0
           else
             echo "Build Failed!"
