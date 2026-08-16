@@ -33,7 +33,7 @@ enum class AppScreen {
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
-    val currentAppVersion = "0.1.0"
+    val currentAppVersion = "0.1.5"
     val usbManager = SourceTxUsbManager(application)
 
     private val _currentScreen = MutableStateFlow(AppScreen.HOME)
