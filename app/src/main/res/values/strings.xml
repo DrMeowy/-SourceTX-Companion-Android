@@ -1,26 +1,30 @@
 <resources>
     <string name="app_name">SourceTX</string>
-    <string name="app_full_name">SourceTX Surface Companion</string>
-    <string name="app_subtitle">Visual Hardware Customizer, Flasher &amp; Surface Configurator</string>
-    
-    <!-- Navigation Cards -->
-    <string name="card_install_title">Install</string>
-    <string name="card_install_subtitle">Factory Build Installation</string>
-    <string name="card_install_desc">Clean factory build: select ESP32 &amp; display, chip preflight, erase flash, write bootloader, and verified factory image.</string>
-    <string name="card_install_action">Factory Installation</string>
+    <string name="title_home">SourceTX Companion</string>
+    <string name="subtitle_home">Install, update, and back up your SourceTX transmitter</string>
 
-    <string name="card_update_title">Update</string>
-    <string name="card_update_subtitle">Firmware Recovery &amp; Flasher</string>
-    <string name="card_update_desc">Flash target binaries (4MB / 8MB / 16MB) or update directly with preflight validation.</string>
-    <string name="card_update_action">Update Firmware</string>
+    <string name="card_install_title">Install SourceTX</string>
+    <string name="card_install_subtitle">For a new or fully erased board</string>
+    <string name="card_install_desc">Set up a supported ESP32-S3 board with verified stable SourceTX firmware. The app checks the board before writing anything.</string>
+    <string name="card_install_action">Set Up a New Board</string>
+
+    <string name="card_update_title">Update or Repair</string>
+    <string name="card_update_subtitle">For an existing SourceTX transmitter</string>
+    <string name="card_update_desc">Install the stable firmware included with this Companion. A regular update keeps your saved models and settings.</string>
+    <string name="card_update_action">Update SourceTX</string>
+
+    <string name="card_config_title">Configure Transmitter</string>
+    <string name="card_config_subtitle">Change settings without flashing</string>
+    <string name="card_config_desc">Adjust model endpoints, channel mapping, stick calibration, and radio profiles live over USB without re-flashing.</string>
+    <string name="card_config_action">In Development</string>
 
     <string name="card_backup_title">Back Up Models</string>
-    <string name="card_backup_subtitle">Model Memory Backup (STXM / STXB)</string>
-    <string name="card_backup_desc">Export the active model (.stxm) or save all transmitter models as a complete bundle (.stxb) via USB-C OTG.</string>
-    <string name="card_backup_action">Export Model Backups</string>
+    <string name="card_backup_subtitle">Save one model or all model slots</string>
+    <string name="card_backup_desc">Save your current model or every configured model to a backup file. Backups are checked for corruption before they are saved.</string>
+    <string name="card_backup_action">Create a Backup</string>
 
     <string name="card_restore_title">Restore Models</string>
-    <string name="card_restore_subtitle">Model Memory Restore (STXM / STXB)</string>
-    <string name="card_restore_desc">Inspect, validate, and restore single models (.stxm) or complete bundles (.stxb) directly to transmitter slots.</string>
-    <string name="card_restore_action">Import &amp; Restore Models</string>
+    <string name="card_restore_subtitle">Recover models from a backup</string>
+    <string name="card_restore_desc">Choose a SourceTX backup, verify it, and restore it to your transmitter. You will be warned before any model is overwritten.</string>
+    <string name="card_restore_action">Choose a Backup</string>
 </resources>

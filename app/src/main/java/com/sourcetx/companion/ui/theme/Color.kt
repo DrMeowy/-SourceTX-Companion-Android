@@ -46,6 +46,14 @@ val CardUpdateBgLight = Color(0xFFF0F9FF)
 val CardUpdateBorderLight = Color(0xFFBAE6FD)
 val CardUpdatePillLight = Color(0xFFE0F2FE)
 
+val CardConfigAccent = Color(0xFFFB923C) // Orange
+val CardConfigBgDark = Color(0xFF261D15)
+val CardConfigBorderDark = Color(0xFF4C3018)
+val CardConfigPillDark = Color(0xFF332316)
+val CardConfigBgLight = Color(0xFFFFF7ED)
+val CardConfigBorderLight = Color(0xFFFFEDD5)
+val CardConfigPillLight = Color(0xFFFFEDD5)
+
 val CardBackupAccent = Color(0xFF34D399) // Emerald Green
 val CardBackupBgDark = Color(0xFF13271F)
 val CardBackupBorderDark = Color(0xFF1B4D3B)

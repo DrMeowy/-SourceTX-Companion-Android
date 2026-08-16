@@ -1,20 +1,24 @@
 package com.sourcetx.companion.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -43,12 +47,12 @@ fun HomeScreen(
             .fillMaxSize()
             .background(colors.background)
             .verticalScroll(scrollState)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Hero Section Header
         Text(
-            text = "SourceTX Surface Companion",
+            text = "SourceTX Companion",
             color = colors.textPrimary,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
@@ -58,18 +62,20 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(2.dp))
 
         Text(
-            text = "Visual Hardware Customizer, Flasher & Surface Configurator (v1.98)",
+            text = "Install, update, and back up your SourceTX transmitter",
             color = colors.textSecondary,
             fontSize = 11.5.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 12.dp)
+            textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Action Cards
-        Column(
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        // ==========================================
+        // ROW 1: 3 CARDS AT TOP (Install, Update, Configure)
+        // ==========================================
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // CARD 1: INSTALL
             ActionCard(
@@ -82,7 +88,8 @@ fun HomeScreen(
                 iconBorderColor = colors.installBorder,
                 accentColor = colors.installAccent,
                 pillBgColor = colors.installPill,
-                onClick = onNavigateToInstall
+                onClick = onNavigateToInstall,
+                modifier = Modifier.weight(1f)
             )
 
             // CARD 2: UPDATE
@@ -96,10 +103,38 @@ fun HomeScreen(
                 iconBorderColor = colors.updateBorder,
                 accentColor = colors.updateAccent,
                 pillBgColor = colors.updatePill,
-                onClick = onNavigateToUpdate
+                onClick = onNavigateToUpdate,
+                modifier = Modifier.weight(1f)
             )
 
-            // CARD 3: BACKUP
+            // CARD 3: CONFIGURE (IN DEVELOPMENT)
+            ActionCard(
+                title = stringResource(R.string.card_config_title),
+                subtitle = stringResource(R.string.card_config_subtitle),
+                description = stringResource(R.string.card_config_desc),
+                actionText = stringResource(R.string.card_config_action),
+                icon = Icons.Default.Tune,
+                iconBgColor = colors.configBg,
+                iconBorderColor = colors.configBorder,
+                accentColor = colors.configAccent,
+                pillBgColor = colors.configPill,
+                enabled = false,
+                badgeText = "In Development",
+                onClick = {},
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // ==========================================
+        // ROW 2: 2 CARDS AT BOTTOM (Backup, Restore)
+        // ==========================================
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // CARD 4: BACKUP
             ActionCard(
                 title = stringResource(R.string.card_backup_title),
                 subtitle = stringResource(R.string.card_backup_subtitle),
@@ -110,21 +145,23 @@ fun HomeScreen(
                 iconBorderColor = colors.backupBorder,
                 accentColor = colors.backupAccent,
                 pillBgColor = colors.backupPill,
-                onClick = onNavigateToBackup
+                onClick = onNavigateToBackup,
+                modifier = Modifier.weight(1f)
             )
 
-            // CARD 4: RESTORE
+            // CARD 5: RESTORE
             ActionCard(
                 title = stringResource(R.string.card_restore_title),
                 subtitle = stringResource(R.string.card_restore_subtitle),
                 description = stringResource(R.string.card_restore_desc),
                 actionText = stringResource(R.string.card_restore_action),
-                icon = Icons.Default.FileDownload,
+                icon = Icons.Default.FolderOpen,
                 iconBgColor = colors.restoreBg,
                 iconBorderColor = colors.restoreBorder,
                 accentColor = colors.restoreAccent,
                 pillBgColor = colors.restorePill,
-                onClick = onNavigateToRestore
+                onClick = onNavigateToRestore,
+                modifier = Modifier.weight(1f)
             )
         }
 

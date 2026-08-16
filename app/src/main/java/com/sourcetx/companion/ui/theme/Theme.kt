@@ -38,6 +38,11 @@ data class SourceTxColors(
     val updatePill: Color,
     val updateAccent: Color,
 
+    val configBg: Color,
+    val configBorder: Color,
+    val configPill: Color,
+    val configAccent: Color,
+
     val backupBg: Color,
     val backupBorder: Color,
     val backupPill: Color,
@@ -69,6 +74,11 @@ val DarkSourceTxColors = SourceTxColors(
     updateBorder = CardUpdateBorderDark,
     updatePill = CardUpdatePillDark,
     updateAccent = CardUpdateAccent,
+
+    configBg = CardConfigBgDark,
+    configBorder = CardConfigBorderDark,
+    configPill = CardConfigPillDark,
+    configAccent = CardConfigAccent,
 
     backupBg = CardBackupBgDark,
     backupBorder = CardBackupBorderDark,
@@ -102,6 +112,11 @@ val LightSourceTxColors = SourceTxColors(
     updatePill = CardUpdatePillLight,
     updateAccent = CardUpdateAccent,
 
+    configBg = CardConfigBgLight,
+    configBorder = CardConfigBorderLight,
+    configPill = CardConfigPillLight,
+    configAccent = CardConfigAccent,
+
     backupBg = CardBackupBgLight,
     backupBorder = CardBackupBorderLight,
     backupPill = CardBackupPillLight,
@@ -115,23 +130,34 @@ val LightSourceTxColors = SourceTxColors(
 
 val LocalSourceTxColors = staticCompositionLocalOf { DarkSourceTxColors }
 
+object SourceTxTheme {
+    val colors: SourceTxColors
+        @Composable
+        get() = LocalSourceTxColors.current
+}
+
 @Composable
 fun SourceTxTheme(
-    darkTheme: Boolean = true,
+    darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
     val colors = if (darkTheme) DarkSourceTxColors else LightSourceTxColors
-    val materialColors = if (darkTheme) {
+
+    val materialColorScheme = if (darkTheme) {
         darkColorScheme(
-            primary = CyanAccent,
             background = DarkBackground,
-            surface = DarkSurface
+            surface = DarkSurface,
+            primary = CyanAccent,
+            onBackground = DarkTextPrimary,
+            onSurface = DarkTextPrimary
         )
     } else {
         lightColorScheme(
-            primary = CyanAccent,
             background = LightBackground,
-            surface = LightSurface
+            surface = LightSurface,
+            primary = CyanAccent,
+            onBackground = LightTextPrimary,
+            onSurface = LightTextPrimary
         )
     }
 
@@ -139,26 +165,16 @@ fun SourceTxTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colors.background.toArgb()
-            window.navigationBarColor = colors.background.toArgb()
-            WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = !darkTheme
-                isAppearanceLightNavigationBars = !darkTheme
-            }
+            window.statusBarColor = colors.surfaceElevated.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
 
     CompositionLocalProvider(LocalSourceTxColors provides colors) {
         MaterialTheme(
-            colorScheme = materialColors,
+            colorScheme = materialColorScheme,
             typography = Typography,
             content = content
         )
     }
-}
-
-object SourceTxTheme {
-    val colors: SourceTxColors
-        @Composable
-        get() = LocalSourceTxColors.current
 }
