@@ -30,11 +30,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
     buildFeatures {
         compose = true
@@ -68,9 +68,6 @@ dependencies {
     
     // USB Serial Driver for Android (CDC-ACM, FTDI, CP210x, CH34x)
     implementation("com.github.mik3y:usb-serial-for-android:3.7.0")
-
-    // JSON parsing
-    implementation("org.json:json:20231013")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
