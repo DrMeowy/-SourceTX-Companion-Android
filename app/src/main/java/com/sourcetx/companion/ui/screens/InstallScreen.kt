@@ -2,6 +2,7 @@ package com.sourcetx.companion.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,14 +13,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,6 +38,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sourcetx.companion.protocol.HardwareCatalog
+import com.sourcetx.companion.ui.components.ReleaseChannelSelector
+import com.sourcetx.companion.ui.components.TechnicalDetailsExpander
+import com.sourcetx.companion.ui.theme.GreenSuccess
 import com.sourcetx.companion.ui.theme.RedDanger
 import com.sourcetx.companion.ui.theme.SourceTxTheme
 
@@ -40,137 +48,240 @@ import com.sourcetx.companion.ui.theme.SourceTxTheme
 fun InstallScreen(
     catalog: HardwareCatalog?,
     isConnected: Boolean,
+    isFlashing: Boolean,
+    flashPercent: Int,
+    flashStatusText: String,
+    consoleLog: String,
+    successMessage: String?,
+    errorMessage: String?,
     onStartInstall: (eraseFlash: Boolean) -> Unit
 ) {
     val colors = SourceTxTheme.colors
     var eraseFlash by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
+
+    val activeBoard = catalog?.boards?.firstOrNull { it.enabled }
+    val activeDisplay = catalog?.displays?.firstOrNull { it.enabled }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.background)
+            .verticalScroll(scrollState)
             .padding(16.dp)
     ) {
-        // Screen Title
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(colors.installBg)
-                    .border(1.dp, colors.installBorder, RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Build,
-                    contentDescription = "Install",
-                    tint = colors.installAccent,
-                    modifier = Modifier.size(20.dp)
-                )
+        // Top Header with Channel Selector
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.installBg)
+                        .border(1.dp, colors.installBorder, RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Build,
+                        contentDescription = "Install",
+                        tint = colors.installAccent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Install SourceTX",
+                        color = colors.textPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "For a new or fully erased board",
+                        color = colors.installAccent,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(
-                    text = "Factory Installation",
-                    color = colors.textPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Clean release installation with preflight safety checks",
-                    color = colors.installAccent,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+
+            ReleaseChannelSelector()
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Hardware Profile Card
-        val activeBoard = catalog?.boards?.firstOrNull { it.enabled }
-        val activeDisplay = catalog?.displays?.firstOrNull { it.enabled }
-
+        // Hardware Profile Specs Card
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
-                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                .padding(14.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(colors.surfaceElevated)
+                .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                .padding(12.dp)
         ) {
-            Column {
-                Text(
-                    text = "Target Hardware Configuration",
-                    color = colors.textPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Verified hardware profile: SourceTX ESP32-S3 reference transmitter",
+                        color = colors.accent,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "The board, flash geometry (4MB DIO), display, and touch controller are verified before installation.",
+                        color = colors.textSecondary,
+                        fontSize = 10.5.sp
+                    )
+                }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
-                Text(
-                    text = "MCU: ${activeBoard?.name ?: "ESP32-S3 SuperMini (4MB Flash DIO/80M)"}",
-                    color = colors.textSecondary,
-                    fontSize = 12.sp
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(colors.backupBg)
+                        .border(1.dp, colors.backupBorder, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "Supported",
+                        color = GreenSuccess,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Erase Chip Option Card
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(colors.surface)
+                .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                .padding(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = eraseFlash,
+                    onCheckedChange = { eraseFlash = it },
+                    colors = CheckboxDefaults.colors(checkedColor = RedDanger)
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Column {
+                    Text(
+                        text = "Erase all saved settings and models",
+                        color = colors.textPrimary,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Leaves transmitter in factory-new state. Leave off unless starting completely fresh.",
+                        color = colors.textMuted,
+                        fontSize = 10.5.sp
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Progress Bar & Status Text
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = "Display: ${activeDisplay?.name ?: "3.5\" ST7796U 480x320 SPI (FT6x36)"}",
+                    text = flashStatusText,
                     color = colors.textSecondary,
-                    fontSize = 12.sp
+                    fontSize = 11.5.sp
                 )
-                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Release Channel: Stable (v1.98)",
-                    color = colors.accent,
+                    text = "$flashPercent%",
+                    color = colors.installAccent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            LinearProgressIndicator(
+                progress = { flashPercent / 100f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = colors.installAccent,
+                trackColor = colors.surfaceElevated
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Troubleshooting / Technical Details Dropdown
+        TechnicalDetailsExpander(
+            catalog = catalog,
+            consoleLog = consoleLog
+        )
+
+        if (successMessage != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.surfaceElevated)
+                    .border(1.dp, GreenSuccess, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = "✓ $successMessage",
+                    color = GreenSuccess,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Safety Erase Option
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
-                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                .padding(14.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
+        if (errorMessage != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.surfaceElevated)
+                    .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
             ) {
-                Checkbox(
-                    checked = eraseFlash,
-                    onCheckedChange = { eraseFlash = it },
-                    colors = CheckboxDefaults.colors(checkedColor = RedDanger)
+                Text(
+                    text = "⚠️ $errorMessage",
+                    color = colors.textSecondary,
+                    fontSize = 11.5.sp
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = "Erase all saved settings and models",
-                        color = colors.textPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "Leaves transmitter in factory-new state. Back up models first!",
-                        color = colors.textMuted,
-                        fontSize = 11.sp
-                    )
-                }
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Action Button
         Button(
             onClick = { onStartInstall(eraseFlash) },
-            enabled = isConnected,
+            enabled = isConnected && !isFlashing,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),
@@ -182,11 +293,21 @@ fun InstallScreen(
                 disabledContentColor = colors.textMuted
             )
         ) {
-            Text(
-                text = if (isConnected) "Start Factory Installation" else "Connect USB OTG to Install",
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
-            )
+            if (isFlashing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = colors.background,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "Installing SourceTX...", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            } else {
+                Text(
+                    text = if (isConnected) "Install SourceTX" else "Connect USB OTG to Install",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+            }
         }
     }
 }

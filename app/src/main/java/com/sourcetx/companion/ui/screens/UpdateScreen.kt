@@ -2,6 +2,7 @@ package com.sourcetx.companion.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,12 +13,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -27,6 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sourcetx.companion.protocol.HardwareCatalog
+import com.sourcetx.companion.ui.components.ReleaseChannelSelector
+import com.sourcetx.companion.ui.components.TechnicalDetailsExpander
 import com.sourcetx.companion.ui.theme.GreenSuccess
 import com.sourcetx.companion.ui.theme.SourceTxTheme
 
@@ -34,93 +41,190 @@ import com.sourcetx.companion.ui.theme.SourceTxTheme
 fun UpdateScreen(
     catalog: HardwareCatalog?,
     isConnected: Boolean,
+    isFlashing: Boolean,
+    flashPercent: Int,
+    flashStatusText: String,
+    consoleLog: String,
+    successMessage: String?,
+    errorMessage: String?,
     onStartUpdate: () -> Unit
 ) {
     val colors = SourceTxTheme.colors
+    val scrollState = rememberScrollState()
+
+    val activeBoard = catalog?.boards?.firstOrNull { it.enabled }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.background)
+            .verticalScroll(scrollState)
             .padding(16.dp)
     ) {
-        // Screen Title
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(colors.updateBg)
-                    .border(1.dp, colors.updateBorder, RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = "Update",
-                    tint = colors.updateAccent,
-                    modifier = Modifier.size(20.dp)
-                )
+        // Top Header with Channel Selector
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.updateBg)
+                        .border(1.dp, colors.updateBorder, RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "Update",
+                        tint = colors.updateAccent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Update or Repair",
+                        color = colors.textPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "For an existing SourceTX transmitter",
+                        color = colors.updateAccent,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(
-                    text = "Update or Repair",
-                    color = colors.textPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Upgrade firmware safely while preserving saved models",
-                    color = colors.updateAccent,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+
+            ReleaseChannelSelector()
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Update Details Card
-        val activeBoard = catalog?.boards?.firstOrNull { it.enabled }
-
+        // Data Retention & Specs Banner
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surface)
-                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                .padding(14.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(colors.surfaceElevated)
+                .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                .padding(12.dp)
         ) {
             Column {
                 Text(
-                    text = "Firmware Channel: Stable (v1.98)",
-                    color = colors.textPrimary,
-                    fontSize = 14.sp,
+                    text = "Verified stable firmware update",
+                    color = colors.accent,
+                    fontSize = 11.5.sp,
                     fontWeight = FontWeight.SemiBold
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = "Target: ${activeBoard?.name ?: "ESP32-S3 SuperMini (4MB)"}",
-                    color = colors.textSecondary,
-                    fontSize = 12.sp
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Data Retention: Saved transmitter models & NVS are preserved ✓",
+                    text = "Companion updates the firmware partition while preserving your saved transmitter models and settings.",
+                    color = colors.textSecondary,
+                    fontSize = 10.5.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "✓ Data Retention: All models preserved",
+                        color = GreenSuccess,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Progress Bar & Status Text
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = flashStatusText,
+                    color = colors.textSecondary,
+                    fontSize = 11.5.sp
+                )
+                Text(
+                    text = "$flashPercent%",
+                    color = colors.updateAccent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            LinearProgressIndicator(
+                progress = { flashPercent / 100f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = colors.updateAccent,
+                trackColor = colors.surfaceElevated
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Troubleshooting / Technical Details Dropdown
+        TechnicalDetailsExpander(
+            catalog = catalog,
+            consoleLog = consoleLog
+        )
+
+        if (successMessage != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.surfaceElevated)
+                    .border(1.dp, GreenSuccess, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = "✓ $successMessage",
                     color = GreenSuccess,
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
                 )
             }
         }
 
+        if (errorMessage != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.surfaceElevated)
+                    .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = "⚠️ $errorMessage",
+                    color = colors.textSecondary,
+                    fontSize = 11.5.sp
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Action Button
         Button(
             onClick = onStartUpdate,
-            enabled = isConnected,
+            enabled = isConnected && !isFlashing,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),
@@ -132,11 +236,21 @@ fun UpdateScreen(
                 disabledContentColor = colors.textMuted
             )
         ) {
-            Text(
-                text = if (isConnected) "Start Regular Update" else "Connect USB OTG to Update",
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
-            )
+            if (isFlashing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = colors.background,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "Updating SourceTX...", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            } else {
+                Text(
+                    text = if (isConnected) "Update SourceTX" else "Connect USB OTG to Update",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+            }
         }
     }
 }

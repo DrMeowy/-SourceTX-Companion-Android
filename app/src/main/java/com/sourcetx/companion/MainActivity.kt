@@ -11,11 +11,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -52,11 +50,21 @@ class MainActivity : ComponentActivity() {
             val hasPermission by viewModel.usbManager.hasPermission.collectAsState()
             val catalog by viewModel.catalog.collectAsState()
 
+            // Flashing state
+            val isFlashing by viewModel.isFlashing.collectAsState()
+            val flashPercent by viewModel.flashPercent.collectAsState()
+            val flashStatusText by viewModel.flashStatusText.collectAsState()
+            val consoleLog by viewModel.consoleLog.collectAsState()
+            val flashSuccess by viewModel.flashSuccessMessage.collectAsState()
+            val flashError by viewModel.flashErrorMessage.collectAsState()
+
+            // Backup state
             val isExporting by viewModel.isExporting.collectAsState()
             val exportProgress by viewModel.exportProgress.collectAsState()
             val exportedModels by viewModel.exportedModels.collectAsState()
             val backupError by viewModel.backupErrorMessage.collectAsState()
 
+            // Restore state
             val loadedEnvelope by viewModel.loadedEnvelope.collectAsState()
             val loadedFileName by viewModel.loadedFileName.collectAsState()
             val isRestoring by viewModel.isRestoring.collectAsState()
@@ -101,26 +109,26 @@ class MainActivity : ComponentActivity() {
                                 InstallScreen(
                                     catalog = catalog,
                                     isConnected = connectedDevice != null && hasPermission,
-                                    onStartInstall = { eraseFlash ->
-                                        Toast.makeText(
-                                            this@MainActivity,
-                                            "Factory Install starting (Erase: $eraseFlash)...",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
+                                    isFlashing = isFlashing,
+                                    flashPercent = flashPercent,
+                                    flashStatusText = flashStatusText,
+                                    consoleLog = consoleLog,
+                                    successMessage = flashSuccess,
+                                    errorMessage = flashError,
+                                    onStartInstall = { eraseFlash -> viewModel.startFactoryInstall(eraseFlash) }
                                 )
                             }
                             AppScreen.UPDATE -> {
                                 UpdateScreen(
                                     catalog = catalog,
                                     isConnected = connectedDevice != null && hasPermission,
-                                    onStartUpdate = {
-                                        Toast.makeText(
-                                            this@MainActivity,
-                                            "Regular Update starting...",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
+                                    isFlashing = isFlashing,
+                                    flashPercent = flashPercent,
+                                    flashStatusText = flashStatusText,
+                                    consoleLog = consoleLog,
+                                    successMessage = flashSuccess,
+                                    errorMessage = flashError,
+                                    onStartUpdate = { viewModel.startRegularUpdate() }
                                 )
                             }
                             AppScreen.BACKUP -> {
