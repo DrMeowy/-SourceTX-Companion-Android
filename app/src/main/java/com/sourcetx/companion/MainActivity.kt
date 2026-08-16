@@ -17,6 +17,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import com.sourcetx.companion.ui.components.AppUpdateDialog
 import com.sourcetx.companion.ui.components.SourceTxStatusBar
 import com.sourcetx.companion.ui.components.SourceTxTopBar
 import com.sourcetx.companion.ui.screens.BackupScreen
@@ -50,6 +51,14 @@ class MainActivity : ComponentActivity() {
             val hasPermission by viewModel.usbManager.hasPermission.collectAsState()
             val catalog by viewModel.catalog.collectAsState()
 
+            // In-app self update state
+            val isCheckingUpdate by viewModel.isCheckingAppUpdate.collectAsState()
+            val appReleaseInfo by viewModel.appReleaseInfo.collectAsState()
+            val showUpdateDialog by viewModel.showUpdateDialog.collectAsState()
+            val isDownloadingUpdate by viewModel.isDownloadingAppUpdate.collectAsState()
+            val downloadPercent by viewModel.appUpdateDownloadPercent.collectAsState()
+            val updateError by viewModel.appUpdateErrorMessage.collectAsState()
+
             // Flashing state
             val isFlashing by viewModel.isFlashing.collectAsState()
             val flashPercent by viewModel.flashPercent.collectAsState()
@@ -76,9 +85,12 @@ class MainActivity : ComponentActivity() {
                     topBar = {
                         SourceTxTopBar(
                             title = "SourceTX",
-                            version = "v0.1.5",
+                            version = "v${viewModel.currentAppVersion}",
                             isDarkTheme = isDarkTheme,
+                            isCheckingUpdate = isCheckingUpdate,
+                            hasUpdateAvailable = appReleaseInfo?.isNewer == true,
                             onToggleTheme = { viewModel.toggleTheme() },
+                            onCheckUpdate = { viewModel.checkForAppUpdate(silent = false) },
                             showBackButton = currentScreen != AppScreen.HOME,
                             onBackClick = { viewModel.navigateTo(AppScreen.HOME) }
                         )
@@ -154,6 +166,18 @@ class MainActivity : ComponentActivity() {
                                     onStartRestore = { targetSlot -> viewModel.startRestore(targetSlot) }
                                 )
                             }
+                        }
+
+                        // App Self-Update Dialog
+                        if (showUpdateDialog && appReleaseInfo != null) {
+                            AppUpdateDialog(
+                                releaseInfo = appReleaseInfo!!,
+                                isDownloading = isDownloadingUpdate,
+                                downloadPercent = downloadPercent,
+                                errorMessage = updateError,
+                                onDismiss = { viewModel.dismissUpdateDialog() },
+                                onConfirmUpdate = { viewModel.downloadAndInstallAppUpdate() }
+                            )
                         }
                     }
                 }

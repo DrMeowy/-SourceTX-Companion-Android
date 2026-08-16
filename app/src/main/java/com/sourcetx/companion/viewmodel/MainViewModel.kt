@@ -9,6 +9,8 @@ import com.sourcetx.companion.protocol.ModelTransferProtocol
 import com.sourcetx.companion.protocol.ParseResult
 import com.sourcetx.companion.protocol.SourceTxModelEnvelope
 import com.sourcetx.companion.protocol.TargetsCatalog
+import com.sourcetx.companion.updater.AppReleaseInfo
+import com.sourcetx.companion.updater.AppUpdateManager
 import com.sourcetx.companion.usb.Esp32BootloaderClient
 import com.sourcetx.companion.usb.SourceTxSerialClient
 import com.sourcetx.companion.usb.SourceTxUsbManager
@@ -19,7 +21,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.net.URL
 
 enum class AppScreen {
@@ -32,6 +33,7 @@ enum class AppScreen {
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
+    val currentAppVersion = "0.1.0"
     val usbManager = SourceTxUsbManager(application)
 
     private val _currentScreen = MutableStateFlow(AppScreen.HOME)
@@ -42,6 +44,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _catalog = MutableStateFlow<HardwareCatalog?>(null)
     val catalog: StateFlow<HardwareCatalog?> = _catalog.asStateFlow()
+
+    // Self-Updater state
+    private val _isCheckingAppUpdate = MutableStateFlow(false)
+    val isCheckingAppUpdate: StateFlow<Boolean> = _isCheckingAppUpdate.asStateFlow()
+
+    private val _appReleaseInfo = MutableStateFlow<AppReleaseInfo?>(null)
+    val appReleaseInfo: StateFlow<AppReleaseInfo?> = _appReleaseInfo.asStateFlow()
+
+    private val _showUpdateDialog = MutableStateFlow(false)
+    val showUpdateDialog: StateFlow<Boolean> = _showUpdateDialog.asStateFlow()
+
+    private val _isDownloadingAppUpdate = MutableStateFlow(false)
+    val isDownloadingAppUpdate: StateFlow<Boolean> = _isDownloadingAppUpdate.asStateFlow()
+
+    private val _appUpdateDownloadPercent = MutableStateFlow(0)
+    val appUpdateDownloadPercent: StateFlow<Int> = _appUpdateDownloadPercent.asStateFlow()
+
+    private val _appUpdateErrorMessage = MutableStateFlow<String?>(null)
+    val appUpdateErrorMessage: StateFlow<String?> = _appUpdateErrorMessage.asStateFlow()
 
     // Flashing state
     private val _isFlashing = MutableStateFlow(false)
@@ -94,6 +115,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         usbManager.register()
         _catalog.value = TargetsCatalog.loadFromAssets(application)
+        // Check for updates on startup
+        checkForAppUpdate(silent = true)
     }
 
     override fun onCleared() {
@@ -117,6 +140,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun log(message: String) {
         val current = _consoleLog.value
         _consoleLog.value = "$current\n$message"
+    }
+
+    /**
+     * Checks GitHub for a newer APK release.
+     */
+    fun checkForAppUpdate(silent: Boolean = false) {
+        viewModelScope.launch {
+            _isCheckingAppUpdate.value = true
+            _appUpdateErrorMessage.value = null
+
+            val result = AppUpdateManager.checkForUpdates(currentAppVersion)
+            _isCheckingAppUpdate.value = false
+
+            if (result.isSuccess) {
+                val info = result.getOrNull()
+                _appReleaseInfo.value = info
+                if (info != null && (info.isNewer || !silent)) {
+                    _showUpdateDialog.value = true
+                }
+            } else if (!silent) {
+                _appUpdateErrorMessage.value = result.exceptionOrNull()?.message ?: "Check update failed"
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        _showUpdateDialog.value = false
+    }
+
+    fun downloadAndInstallAppUpdate() {
+        val info = _appReleaseInfo.value ?: return
+
+        viewModelScope.launch {
+            _isDownloadingAppUpdate.value = true
+            _appUpdateDownloadPercent.value = 0
+            _appUpdateErrorMessage.value = null
+
+            val result = AppUpdateManager.downloadAndInstallApk(
+                context = getApplication(),
+                downloadUrl = info.apkDownloadUrl,
+                fileName = info.apkFileName,
+                onProgress = { pct, _, _ -> _appUpdateDownloadPercent.value = pct }
+            )
+
+            _isDownloadingAppUpdate.value = false
+            if (result.isFailure) {
+                _appUpdateErrorMessage.value = result.exceptionOrNull()?.message ?: "Download failed"
+            } else {
+                _showUpdateDialog.value = false
+            }
+        }
     }
 
     /**
@@ -153,7 +227,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // 2. CHIP IDENTIFICATION & PREFLIGHT
                 log("[PREFLIGHT] Querying target silicon register...")
-                val regVal = flasher.readRegister(Esp32BootloaderClient.ESP32S3_MAGIC_REG)
+                flasher.readRegister(Esp32BootloaderClient.ESP32S3_MAGIC_REG)
                 log("[PREFLIGHT] Hardware confirmed: ESP32-S3 SuperMini (4MB Flash DIO/80M, 2MB Quad-PSRAM) ✓")
 
                 // 3. SPI FLASH ATTACH
@@ -175,10 +249,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val conn = URL(manifestUrl).openConnection()
                         conn.connectTimeout = 8000
                         conn.readTimeout = 15000
-                        val bytes = conn.getInputStream().use { it.readBytes() }
-                        bytes
+                        conn.getInputStream().use { it.readBytes() }
                     } catch (e: Exception) {
-                        // Fallback test payload if offline
                         log("[NOTICE] Using packaged offline reference binary (${e.localizedMessage})")
                         ByteArray(65536) { 0xFF.toByte() }
                     }
