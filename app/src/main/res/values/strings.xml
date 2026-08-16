@@ -1,0 +1,26 @@
+<resources>
+    <string name="app_name">SourceTX</string>
+    <string name="app_full_name">SourceTX Surface Companion</string>
+    <string name="app_subtitle">Visual Hardware Customizer, Flasher &amp; Surface Configurator</string>
+    
+    <!-- Navigation Cards -->
+    <string name="card_install_title">Install</string>
+    <string name="card_install_subtitle">Factory Build Installation</string>
+    <string name="card_install_desc">Clean factory build: select ESP32 &amp; display, chip preflight, erase flash, write bootloader, and verified factory image.</string>
+    <string name="card_install_action">Factory Installation</string>
+
+    <string name="card_update_title">Update</string>
+    <string name="card_update_subtitle">Firmware Recovery &amp; Flasher</string>
+    <string name="card_update_desc">Flash target binaries (4MB / 8MB / 16MB) or update directly with preflight validation.</string>
+    <string name="card_update_action">Update Firmware</string>
+
+    <string name="card_backup_title">Back Up Models</string>
+    <string name="card_backup_subtitle">Model Memory Backup (STXM / STXB)</string>
+    <string name="card_backup_desc">Export the active model (.stxm) or save all transmitter models as a complete bundle (.stxb) via USB-C OTG.</string>
+    <string name="card_backup_action">Export Model Backups</string>
+
+    <string name="card_restore_title">Restore Models</string>
+    <string name="card_restore_subtitle">Model Memory Restore (STXM / STXB)</string>
+    <string name="card_restore_desc">Inspect, validate, and restore single models (.stxm) or complete bundles (.stxb) directly to transmitter slots.</string>
+    <string name="card_restore_action">Import &amp; Restore Models</string>
+</resources>
