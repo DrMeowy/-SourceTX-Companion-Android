@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -30,21 +30,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build Debug APK
-        run: |
-          ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee build_log.txt || true
-
-      - name: Emit Annotations and Check Result
-        run: |
-          grep -E "e: |FAILURE:|error:" build_log.txt | while IFS= read -r line; do
-            echo "::error::$line"
-          done
-          if grep -q "BUILD SUCCESSFUL" build_log.txt; then
-            echo "Build Successful!"
-            exit 0
-          else
-            echo "Build Failed!"
-            exit 1
-          fi
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
@@ -61,18 +47,18 @@ jobs:
           body: |
             ## SourceTX Companion Android v0.1.5
             
-            ### What's New:
-            * **New Home Dashboard**: 3 cards at top (**Install**, **Update**, **Configure Transmitter**) and 2 cards at bottom (**Backup**, **Restore**).
-            * **Native ESP32-S3 ROM Bootloader Flasher**: Direct USB-C OTG preflight, DIO/80M SPI attach, and binary flashing.
-            * **Release Channel Selector**: `[ Stable ]` and `[ Experimental ]` badges.
-            * **Technical Details Expander**: Hardware specs overview and real-time live console log.
-            * **Bottom Status Bar Updater**: In-app self-updater and GitHub bug reporter.
+            ### What's New
+            - **New Home Dashboard** — 3 cards at top (Install, Update, Configure Transmitter) and 2 at bottom (Backup, Restore)
+            - **Native ESP32-S3 ROM Bootloader Flasher** — Direct USB-C OTG preflight, DIO/80M SPI attach, and binary flashing
+            - **Release Channel Selector** — Stable and Experimental badges
+            - **Technical Details Expander** — Hardware specs overview and real-time live console log
+            - **Bottom Status Bar Updater** — In-app self-updater from GitHub Releases and bug reporter
             
-            ### Direct Download:
-            Download **`SourceTX-Companion-v0.1.5.apk`** below to install directly on Android.
+            ### Direct Download
+            Download **SourceTX-Companion-v0.1.5.apk** below to install directly on Android.
           files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
-          overwrite: true
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
