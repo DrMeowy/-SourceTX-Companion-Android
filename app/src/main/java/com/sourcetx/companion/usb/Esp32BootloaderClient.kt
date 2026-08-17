@@ -178,18 +178,27 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
         }
     }
 
+    private val rxBuffer = ByteArray(4096)
+    private var rxOffset = 0
+    private var rxLength = 0
+    private val packetBuffer = ByteArrayOutputStream()
+    private var inPacket = false
+    private var isEscaped = false
+
     suspend fun reboot(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            command(ESP_FLASH_END, littleEndianInts(0), timeoutMs = 2_000)
+            command(ESP_FLASH_END, littleEndianInts(0), checkStatus = false, timeoutMs = 2_000)
             Unit
         }.recoverCatching {
             // Some USB/JTAG transports disappear before delivering the ROM
             // response. A reset pulse is safe after successful MD5 verification.
-            port.dtr = false
-            port.rts = true
-            delay(100)
-            port.rts = false
-            port.dtr = false
+            try {
+                port.dtr = false
+                port.rts = true
+                delay(100)
+                port.rts = false
+                port.dtr = false
+            } catch (_: Exception) {}
             Unit
         }
     }
@@ -205,13 +214,15 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
         // 1. Direct Sync: If user already held BOOT while connecting USB,
         // the ESP32-S3 ROM bootloader is already active. Do NOT reset immediately!
         drain()
-        for (i in 0 until 6) {
+        for (i in 0 until 8) {
             try {
-                command(ESP_SYNC, payload, timeoutMs = 250)
-                repeat(7) { readSlipPacket(30) }
+                command(ESP_SYNC, payload, checkStatus = false, timeoutMs = 200)
+                repeat(7) {
+                    try { readSlipPacket(20) } catch (_: Throwable) {}
+                }
                 return
             } catch (_: Throwable) {
-                delay(30)
+                delay(20)
             }
         }
 
@@ -229,14 +240,16 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
 
         // 3. Sync loop with retries
         var lastFailure: Throwable? = null
-        for (i in 0 until 25) {
+        for (i in 0 until 30) {
             try {
-                command(ESP_SYNC, payload, timeoutMs = 350)
-                repeat(7) { readSlipPacket(30) }
+                command(ESP_SYNC, payload, checkStatus = false, timeoutMs = 250)
+                repeat(7) {
+                    try { readSlipPacket(20) } catch (_: Throwable) {}
+                }
                 return
             } catch (error: Throwable) {
                 lastFailure = error
-                delay(40)
+                delay(30)
             }
         }
         throw IOException(
@@ -323,9 +336,10 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
 
     private fun command(
         opcode: Int,
-        payload: ByteArray,
+        payload: ByteArray = ByteArray(0),
         checksum: Int = 0,
         responseDataLength: Int = 0,
+        checkStatus: Boolean = true,
         timeoutMs: Long
     ): CommandResponse {
         sendRequest(opcode, payload, checksum)
@@ -336,20 +350,30 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
             val header = ByteBuffer.wrap(packet, 0, 8).order(ByteOrder.LITTLE_ENDIAN)
             val direction = header.get().toInt() and 0xFF
             val responseOpcode = header.get().toInt() and 0xFF
-            val dataLength = header.short.toInt() and 0xFFFF
+            header.short // dataLength field
             val value = header.int.toLong() and 0xFFFFFFFFL
+
+            // Direction must be 1 (Response)
             if (direction != 1 || responseOpcode != opcode) continue
-            if (packet.size < 8 + dataLength) throw IOException("ESP32-S3 returned a truncated response.")
-            val data = packet.copyOfRange(8, 8 + dataLength)
-            if (data.size < responseDataLength + 2) {
-                throw IOException("ESP32-S3 returned an incomplete status response for command 0x${opcode.toString(16)}.")
+
+            val data = if (packet.size > 8) packet.copyOfRange(8, packet.size) else ByteArray(0)
+
+            if (checkStatus && data.size >= 2) {
+                val statusIndex = if (data.size >= responseDataLength + 2) responseDataLength else 0
+                val status = data[statusIndex].toInt() and 0xFF
+                val reason = data[statusIndex + 1].toInt() and 0xFF
+                if (status != 0) {
+                    throw IOException("ESP32-S3 rejected command 0x${opcode.toString(16)} (status $status, reason $reason).")
+                }
             }
-            val status = data[responseDataLength].toInt() and 0xFF
-            val reason = data[responseDataLength + 1].toInt() and 0xFF
-            if (status != 0) {
-                throw IOException("ESP32-S3 rejected command 0x${opcode.toString(16)} (status $status, reason $reason).")
+
+            val returnData = if (responseDataLength > 0 && data.size >= responseDataLength) {
+                data.copyOfRange(0, responseDataLength)
+            } else {
+                data
             }
-            return CommandResponse(value, data.copyOfRange(0, responseDataLength))
+
+            return CommandResponse(value, returnData)
         }
         throw IOException("ESP32-S3 timed out during command 0x${opcode.toString(16)}.")
     }
@@ -385,33 +409,44 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
 
     private fun readSlipPacket(timeoutMs: Long): ByteArray? {
         val deadline = System.currentTimeMillis() + timeoutMs
-        val output = ByteArrayOutputStream()
-        var inPacket = false
-        var escaped = false
         while (System.currentTimeMillis() < deadline) {
-            val remaining = (deadline - System.currentTimeMillis()).coerceIn(1, 100).toInt()
-            val count = try { port.read(readBuffer, remaining) } catch (_: Exception) { 0 }
-            if (count <= 0) continue
-            for (index in 0 until count) {
-                val value = readBuffer[index].toInt() and 0xFF
+            if (rxOffset >= rxLength) {
+                val remaining = (deadline - System.currentTimeMillis()).coerceIn(1, 100).toInt()
+                rxOffset = 0
+                rxLength = try {
+                    port.read(rxBuffer, remaining)
+                } catch (_: Exception) {
+                    0
+                }
+                if (rxLength <= 0) continue
+            }
+
+            while (rxOffset < rxLength) {
+                val byte = rxBuffer[rxOffset++].toInt() and 0xFF
                 when {
-                    value == SLIP_END -> {
-                        if (inPacket && output.size() > 0) return output.toByteArray()
+                    byte == SLIP_END -> {
+                        if (inPacket && packetBuffer.size() > 0) {
+                            val result = packetBuffer.toByteArray()
+                            packetBuffer.reset()
+                            inPacket = false
+                            isEscaped = false
+                            return result
+                        }
                         inPacket = true
-                        escaped = false
-                        output.reset()
+                        isEscaped = false
+                        packetBuffer.reset()
                     }
                     !inPacket -> Unit
-                    escaped -> {
-                        when (value) {
-                            SLIP_ESC_END -> output.write(SLIP_END)
-                            SLIP_ESC_ESC -> output.write(SLIP_ESC)
-                            else -> throw IOException("ESP32-S3 returned an invalid SLIP escape sequence.")
+                    isEscaped -> {
+                        when (byte) {
+                            SLIP_ESC_END -> packetBuffer.write(SLIP_END)
+                            SLIP_ESC_ESC -> packetBuffer.write(SLIP_ESC)
+                            else -> packetBuffer.write(byte)
                         }
-                        escaped = false
+                        isEscaped = false
                     }
-                    value == SLIP_ESC -> escaped = true
-                    else -> output.write(value)
+                    byte == SLIP_ESC -> isEscaped = true
+                    else -> packetBuffer.write(byte)
                 }
             }
         }
@@ -419,7 +454,14 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
     }
 
     private fun drain() {
-        try { while (port.read(readBuffer, 20) > 0) Unit } catch (_: Exception) {}
+        rxOffset = 0
+        rxLength = 0
+        packetBuffer.reset()
+        inPacket = false
+        isEscaped = false
+        try {
+            while (port.read(rxBuffer, 10) > 0) Unit
+        } catch (_: Exception) {}
     }
 
     private fun checksum(data: ByteArray): Int =

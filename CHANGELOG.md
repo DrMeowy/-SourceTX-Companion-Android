@@ -4,6 +4,11 @@ All notable user-visible changes are recorded here.
 
 ## Unreleased
 
+## 0.2.5 - 2026-08-17
+
+- Fixed ESP32-S3 bootloader SYNC response validation and continuous SLIP stream
+  buffering to ensure instant, reliable flashing connection when connecting with BOOT held.
+
 ## 0.2.4 - 2026-08-17
 
 - Updated Report Bug action in bottom status bar to use distinctive red accent styling.
