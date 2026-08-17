@@ -18,6 +18,19 @@ data class SourceTxDeviceTransferInfo(
     val activeModel: Int
 )
 
+data class HardwarePinSettings(
+    val crsfPin: Int = 42,
+    val statusMode: Int = 0,
+    val statusMonoPin: Int = -1,
+    val statusRedPin: Int = -1,
+    val statusGreenPin: Int = -1,
+    val statusBluePin: Int = -1,
+    val statusBrightness: Int = 60,
+    val soundMode: Int = 0,
+    val soundPin: Int = -1,
+    val vibrationPin: Int = -1
+)
+
 class SourceTxSerialClient(private val port: UsbSerialPort) {
     companion object {
         const val COMMAND_PREFIX = "SOURCETX_XFER:"
@@ -185,6 +198,78 @@ class SourceTxSerialClient(private val port: UsbSerialPort) {
             info.modelCount = modelCount
         }
     }
+
+    suspend fun getHardwareSettings(timeoutMs: Long = 4000): Result<HardwarePinSettings> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                drain()
+                sendLine("${COMMAND_PREFIX}GET_HW")
+                val line = readMatchingLine(timeoutMs) {
+                    it.startsWith("${COMMAND_PREFIX}HW:") || it.startsWith("${COMMAND_PREFIX}ERR:")
+                } ?: throw IOException("The transmitter did not respond to the hardware settings request. Make sure USB is connected.")
+                if (line.startsWith("${COMMAND_PREFIX}ERR:")) {
+                    throw IOException("The transmitter returned an error: $line")
+                }
+                val payload = line.substring("${COMMAND_PREFIX}HW:".length)
+                var crsf = 42
+                var statMode = 0
+                var statMono = -1
+                var statR = -1
+                var statG = -1
+                var statB = -1
+                var statBright = 60
+                var sndMode = 0
+                var sndPin = -1
+                var vibPin = -1
+
+                payload.split(':').forEach { pair ->
+                    val kv = pair.split('=')
+                    if (kv.size == 2) {
+                        val v = kv[1].toIntOrNull() ?: 0
+                        when (kv[0]) {
+                            "CRSF" -> crsf = v
+                            "STAT_MODE" -> statMode = v
+                            "STAT_MONO" -> statMono = v
+                            "STAT_R" -> statR = v
+                            "STAT_G" -> statG = v
+                            "STAT_B" -> statB = v
+                            "STAT_BRIGHT" -> statBright = v
+                            "SND_MODE" -> sndMode = v
+                            "SND_PIN" -> sndPin = v
+                            "VIB_PIN" -> vibPin = v
+                        }
+                    }
+                }
+                HardwarePinSettings(
+                    crsfPin = crsf,
+                    statusMode = statMode,
+                    statusMonoPin = statMono,
+                    statusRedPin = statR,
+                    statusGreenPin = statG,
+                    statusBluePin = statB,
+                    statusBrightness = statBright,
+                    soundMode = sndMode,
+                    soundPin = sndPin,
+                    vibrationPin = vibPin
+                )
+            }
+        }
+
+    suspend fun setHardwareSettings(settings: HardwarePinSettings, timeoutMs: Long = 4000): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                drain()
+                val cmd = "${COMMAND_PREFIX}SET_HW:CRSF=${settings.crsfPin}:STAT_MODE=${settings.statusMode}:STAT_MONO=${settings.statusMonoPin}:STAT_R=${settings.statusRedPin}:STAT_G=${settings.statusGreenPin}:STAT_B=${settings.statusBluePin}:STAT_BRIGHT=${settings.statusBrightness}:SND_MODE=${settings.soundMode}:SND_PIN=${settings.soundPin}:VIB_PIN=${settings.vibrationPin}"
+                sendLine(cmd)
+                val expected = "${COMMAND_PREFIX}OK:SET_HW"
+                val line = readMatchingLine(timeoutMs) {
+                    it == expected || it.startsWith("${COMMAND_PREFIX}ERR:")
+                } ?: throw IOException("The transmitter did not confirm the hardware settings write.")
+                if (line != expected) {
+                    throw IOException("The transmitter rejected the hardware settings: $line")
+                }
+            }
+        }
 
     private fun sendLine(line: String) {
         port.write("$line\n".toByteArray(Charsets.US_ASCII), WRITE_TIMEOUT_MS)

@@ -23,6 +23,7 @@ import com.sourcetx.companion.ui.components.AppUpdateDialog
 import com.sourcetx.companion.ui.components.SourceTxStatusBar
 import com.sourcetx.companion.ui.components.SourceTxTopBar
 import com.sourcetx.companion.ui.screens.BackupScreen
+import com.sourcetx.companion.ui.screens.ConfigScreen
 import com.sourcetx.companion.ui.screens.HomeScreen
 import com.sourcetx.companion.ui.screens.InstallScreen
 import com.sourcetx.companion.ui.screens.RestoreScreen
@@ -106,6 +107,14 @@ class MainActivity : ComponentActivity() {
             val restoreSuccess by viewModel.restoreSuccessMessage.collectAsState()
             val restoreError by viewModel.restoreErrorMessage.collectAsState()
 
+            // Hardware Config state
+            val hardwareSettings by viewModel.hardwarePinSettings.collectAsState()
+            val isReadingHardware by viewModel.isReadingHardwareConfig.collectAsState()
+            val isSavingHardware by viewModel.isSavingHardwareConfig.collectAsState()
+            val hardwareSuccess by viewModel.hardwareConfigSuccess.collectAsState()
+            val hardwareError by viewModel.hardwareConfigError.collectAsState()
+            val hardwareLogs by viewModel.hardwareConfigLogs.collectAsState()
+
             SourceTxTheme(darkTheme = isDarkTheme) {
                 Scaffold(
                     topBar = {
@@ -141,8 +150,22 @@ class MainActivity : ComponentActivity() {
                                 HomeScreen(
                                     onNavigateToInstall = { viewModel.navigateTo(AppScreen.INSTALL) },
                                     onNavigateToUpdate = { viewModel.navigateTo(AppScreen.UPDATE) },
+                                    onNavigateToConfig = { viewModel.navigateTo(AppScreen.CONFIG) },
                                     onNavigateToBackup = { viewModel.navigateTo(AppScreen.BACKUP) },
                                     onNavigateToRestore = { viewModel.navigateTo(AppScreen.RESTORE) }
+                                )
+                            }
+                            AppScreen.CONFIG -> {
+                                ConfigScreen(
+                                    isConnected = connectedDevice != null && hasPermission,
+                                    settings = hardwareSettings,
+                                    isReading = isReadingHardware,
+                                    isSaving = isSavingHardware,
+                                    successMessage = hardwareSuccess,
+                                    errorMessage = hardwareError,
+                                    logs = hardwareLogs,
+                                    onReadSettings = { viewModel.readHardwareSettings() },
+                                    onSaveSettings = { cfg -> viewModel.saveHardwareSettings(cfg) }
                                 )
                             }
                             AppScreen.INSTALL -> {
@@ -155,7 +178,8 @@ class MainActivity : ComponentActivity() {
                                     consoleLog = consoleLog,
                                     successMessage = flashSuccess,
                                     errorMessage = flashError,
-                                    onStartInstall = { eraseFlash -> viewModel.startFactoryInstall(eraseFlash) }
+                                    onStartInstall = { eraseFlash -> viewModel.startFactoryInstall(eraseFlash) },
+                                    onNavigateToConfig = { viewModel.navigateTo(AppScreen.CONFIG) }
                                 )
                             }
                             AppScreen.UPDATE -> {
@@ -168,7 +192,8 @@ class MainActivity : ComponentActivity() {
                                     consoleLog = consoleLog,
                                     successMessage = flashSuccess,
                                     errorMessage = flashError,
-                                    onStartUpdate = { viewModel.startRegularUpdate() }
+                                    onStartUpdate = { viewModel.startRegularUpdate() },
+                                    onNavigateToConfig = { viewModel.navigateTo(AppScreen.CONFIG) }
                                 )
                             }
                             AppScreen.BACKUP -> {

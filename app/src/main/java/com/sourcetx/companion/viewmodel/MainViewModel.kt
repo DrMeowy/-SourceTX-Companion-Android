@@ -10,6 +10,7 @@ import com.sourcetx.companion.protocol.TargetsCatalog
 import com.sourcetx.companion.updater.AppReleaseInfo
 import com.sourcetx.companion.updater.AppUpdateManager
 import com.sourcetx.companion.usb.Esp32BootloaderClient
+import com.sourcetx.companion.usb.HardwarePinSettings
 import com.sourcetx.companion.usb.SourceTxSerialClient
 import com.sourcetx.companion.usb.SourceTxUsbManager
 import androidx.lifecycle.AndroidViewModel
@@ -22,7 +23,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-enum class AppScreen { HOME, INSTALL, UPDATE, BACKUP, RESTORE }
+enum class AppScreen { HOME, INSTALL, UPDATE, CONFIG, BACKUP, RESTORE }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     val currentAppVersion: String = BuildConfig.VERSION_NAME
@@ -83,6 +84,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _restoreErrorMessage = MutableStateFlow<String?>(null)
     val restoreErrorMessage = _restoreErrorMessage.asStateFlow()
 
+    // Hardware Pin Configuration state
+    private val _hardwarePinSettings = MutableStateFlow(HardwarePinSettings())
+    val hardwarePinSettings: StateFlow<HardwarePinSettings> = _hardwarePinSettings.asStateFlow()
+    private val _isReadingHardwareConfig = MutableStateFlow(false)
+    val isReadingHardwareConfig: StateFlow<Boolean> = _isReadingHardwareConfig.asStateFlow()
+    private val _isSavingHardwareConfig = MutableStateFlow(false)
+    val isSavingHardwareConfig: StateFlow<Boolean> = _isSavingHardwareConfig.asStateFlow()
+    private val _hardwareConfigSuccess = MutableStateFlow<String?>(null)
+    val hardwareConfigSuccess: StateFlow<String?> = _hardwareConfigSuccess.asStateFlow()
+    private val _hardwareConfigError = MutableStateFlow<String?>(null)
+    val hardwareConfigError: StateFlow<String?> = _hardwareConfigError.asStateFlow()
+    private val _hardwareConfigLogs = MutableStateFlow<List<String>>(listOf("[READY] Connect the transmitter via USB OTG."))
+    val hardwareConfigLogs: StateFlow<List<String>> = _hardwareConfigLogs.asStateFlow()
+
     init {
         usbManager.register()
         _catalog.value = TargetsCatalog.loadFromAssets(application)
@@ -101,6 +116,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _backupErrorMessage.value = null
         _restoreErrorMessage.value = null
         _restoreSuccessMessage.value = null
+        _hardwareConfigError.value = null
+        _hardwareConfigSuccess.value = null
     }
 
     fun toggleTheme() {
@@ -336,6 +353,90 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun log(message: String) {
         _consoleLog.value += "\n$message"
+    }
+
+    fun updateHardwareSettingsLocally(settings: HardwarePinSettings) {
+        _hardwarePinSettings.value = settings
+    }
+
+    fun clearHardwareConfigMessages() {
+        _hardwareConfigSuccess.value = null
+        _hardwareConfigError.value = null
+    }
+
+    private fun logHardware(msg: String) {
+        _hardwareConfigLogs.value = _hardwareConfigLogs.value + msg
+    }
+
+    fun readHardwareSettings() {
+        if (_isReadingHardwareConfig.value || _isSavingHardwareConfig.value) return
+        viewModelScope.launch {
+            _isReadingHardwareConfig.value = true
+            _hardwareConfigError.value = null
+            _hardwareConfigSuccess.value = null
+            logHardware("[READ] Requesting hardware pin settings from transmitter...")
+            try {
+                val port = usbManager.openPort() ?: error("Connect SourceTX by USB OTG, grant USB permission, and try again.")
+                val client = SourceTxSerialClient(port)
+                val settings = client.getHardwareSettings().getOrThrow()
+                _hardwarePinSettings.value = settings
+                _hardwareConfigSuccess.value = "Hardware settings loaded from transmitter NVS."
+                logHardware("[SUCCESS] Loaded from NVS: CRSF=GPIO ${settings.crsfPin}, StatusMode=${settings.statusMode}, SoundMode=${settings.soundMode}")
+            } catch (error: Throwable) {
+                val msg = error.message ?: "Failed to read hardware settings."
+                _hardwareConfigError.value = msg
+                logHardware("[ERROR] $msg")
+            } finally {
+                usbManager.disconnect()
+                _isReadingHardwareConfig.value = false
+            }
+        }
+    }
+
+    fun saveHardwareSettings(settings: HardwarePinSettings) {
+        if (_isReadingHardwareConfig.value || _isSavingHardwareConfig.value) return
+        viewModelScope.launch {
+            _isSavingHardwareConfig.value = true
+            _hardwareConfigError.value = null
+            _hardwareConfigSuccess.value = null
+            logHardware("[WRITE] Writing hardware pin settings to transmitter NVS...")
+            try {
+                // Check pin collisions
+                val used = mutableMapOf<Int, String>()
+                fun checkCol(pin: Int, name: String) {
+                    if (pin >= 0) {
+                        if (used.containsKey(pin)) {
+                            error("GPIO $pin is assigned to both '${used[pin]}' and '$name'. Each physical pin can only be assigned to one function.")
+                        }
+                        used[pin] = name
+                    }
+                }
+                checkCol(settings.crsfPin, "CRSF UART")
+                if (settings.statusMode == 1) checkCol(settings.statusMonoPin, "Status Mono LED")
+                if (settings.statusMode == 3) checkCol(settings.statusMonoPin, "Status WS2812 NeoPixel LED")
+                if (settings.statusMode == 2) {
+                    checkCol(settings.statusRedPin, "Status Red LED")
+                    checkCol(settings.statusGreenPin, "Status Green LED")
+                    checkCol(settings.statusBluePin, "Status Blue LED")
+                }
+                if (settings.soundMode != 0) checkCol(settings.soundPin, "Sound Output")
+                checkCol(settings.vibrationPin, "Vibration Motor")
+
+                val port = usbManager.openPort() ?: error("Connect SourceTX by USB OTG, grant USB permission, and try again.")
+                val client = SourceTxSerialClient(port)
+                client.setHardwareSettings(settings).getOrThrow()
+                _hardwarePinSettings.value = settings
+                _hardwareConfigSuccess.value = "Hardware pin configuration saved to transmitter NVS!"
+                logHardware("[SUCCESS] Settings successfully written to NVS.")
+            } catch (error: Throwable) {
+                val msg = error.message ?: "Failed to save hardware settings."
+                _hardwareConfigError.value = msg
+                logHardware("[ERROR] $msg")
+            } finally {
+                usbManager.disconnect()
+                _isSavingHardwareConfig.value = false
+            }
+        }
     }
 
     private fun safeFileName(value: String): String = value

@@ -50,6 +50,7 @@ private data class HomeCard(
 fun HomeScreen(
     onNavigateToInstall: () -> Unit,
     onNavigateToUpdate: () -> Unit,
+    onNavigateToConfig: () -> Unit,
     onNavigateToBackup: () -> Unit,
     onNavigateToRestore: () -> Unit
 ) {
@@ -71,7 +72,7 @@ fun HomeScreen(
             stringResource(R.string.card_config_title), stringResource(R.string.card_config_subtitle),
             stringResource(R.string.card_config_desc), stringResource(R.string.card_config_action),
             Icons.Default.Tune, colors.configBg, colors.configBorder, colors.configAccent,
-            colors.configPill, false, {}
+            colors.configPill, true, onNavigateToConfig
         ),
         HomeCard(
             stringResource(R.string.card_backup_title), stringResource(R.string.card_backup_subtitle),

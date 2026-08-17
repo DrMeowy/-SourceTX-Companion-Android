@@ -56,7 +56,8 @@ fun InstallScreen(
     consoleLog: String,
     successMessage: String?,
     errorMessage: String?,
-    onStartInstall: (eraseFlash: Boolean) -> Unit
+    onStartInstall: (eraseFlash: Boolean) -> Unit,
+    onNavigateToConfig: (() -> Unit)? = null
 ) {
     val colors = SourceTxTheme.colors
     var eraseFlash by remember { mutableStateOf(false) }
@@ -249,12 +250,28 @@ fun InstallScreen(
                     .border(1.dp, GreenSuccess, RoundedCornerShape(8.dp))
                     .padding(12.dp)
             ) {
-                Text(
-                    text = "✓ $successMessage",
-                    color = GreenSuccess,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
+                Column {
+                    Text(
+                        text = "✓ $successMessage",
+                        color = GreenSuccess,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    if (onNavigateToConfig != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(
+                            onClick = onNavigateToConfig,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.configAccent,
+                                contentColor = androidx.compose.ui.graphics.Color(0xFF0A0C10)
+                            ),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth().height(36.dp)
+                        ) {
+                            Text("Would you like to configure pins now?", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
         }
 

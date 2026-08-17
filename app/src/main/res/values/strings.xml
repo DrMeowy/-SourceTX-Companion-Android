@@ -14,9 +14,9 @@
     <string name="card_update_action">Update SourceTX</string>
 
     <string name="card_config_title">Configure Transmitter</string>
-    <string name="card_config_subtitle">Change settings without flashing</string>
-    <string name="card_config_desc">Adjust model endpoints, channel mapping, stick calibration, and radio profiles live over USB without re-flashing.</string>
-    <string name="card_config_action">In Development</string>
+    <string name="card_config_subtitle">Hardware pinout &amp; NVS memory</string>
+    <string name="card_config_desc">Configure CRSF UART, Status LED indicator, buzzer, and haptic feedback pins directly in transmitter NVS memory.</string>
+    <string name="card_config_action">Configure Hardware</string>
 
     <string name="card_backup_title">Back Up Models</string>
     <string name="card_backup_subtitle">Save one model or all model slots</string>
