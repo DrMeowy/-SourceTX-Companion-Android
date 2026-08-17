@@ -195,33 +195,48 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
     }
 
     private suspend fun synchronize() {
-        drain()
-        port.dtr = false
-        port.rts = true
-        delay(100)
-        port.dtr = true
-        port.rts = false
-        delay(100)
-        port.dtr = false
-        port.rts = false
-        delay(150)
-        drain()
-
         val payload = ByteArray(36) { 0x55.toByte() }.apply {
             this[0] = 0x07
             this[1] = 0x07
             this[2] = 0x12
             this[3] = 0x20
         }
-        var lastFailure: Throwable? = null
-        repeat(10) {
+
+        // 1. Direct Sync: If user already held BOOT while connecting USB,
+        // the ESP32-S3 ROM bootloader is already active. Do NOT reset immediately!
+        drain()
+        for (i in 0 until 6) {
             try {
-                command(ESP_SYNC, payload, timeoutMs = 500)
-                repeat(7) { readSlipPacket(50) }
+                command(ESP_SYNC, payload, timeoutMs = 250)
+                repeat(7) { readSlipPacket(30) }
+                return
+            } catch (_: Throwable) {
+                delay(30)
+            }
+        }
+
+        // 2. Hardware auto-reset into download mode (for boards with DTR/RTS EN/IO0 circuit)
+        try {
+            port.dtr = true  // Assert IO0 LOW (BOOT button state)
+            port.rts = true  // Assert EN LOW (Reset active)
+            delay(100)
+            port.rts = false // Release EN (chip boots into ROM download mode with IO0 LOW)
+            delay(100)
+            port.dtr = false // Release IO0
+            delay(150)
+        } catch (_: Exception) {}
+        drain()
+
+        // 3. Sync loop with retries
+        var lastFailure: Throwable? = null
+        for (i in 0 until 25) {
+            try {
+                command(ESP_SYNC, payload, timeoutMs = 350)
+                repeat(7) { readSlipPacket(30) }
                 return
             } catch (error: Throwable) {
                 lastFailure = error
-                delay(50)
+                delay(40)
             }
         }
         throw IOException(

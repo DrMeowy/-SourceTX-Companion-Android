@@ -53,13 +53,19 @@ jobs:
             echo "ANDROID_KEYSTORE_PASSWORD=${ANDROID_KEYSTORE_PASSWORD}" >> "$GITHUB_ENV"
             echo "ANDROID_KEY_ALIAS=${ANDROID_KEY_ALIAS}" >> "$GITHUB_ENV"
             echo "ANDROID_KEY_PASSWORD=${ANDROID_KEY_PASSWORD}" >> "$GITHUB_ENV"
+          elif [ -f "sourcetx-release.jks" ]; then
+            echo "Using permanent repository release keystore."
+            echo "ANDROID_KEYSTORE_FILE=${{ github.workspace }}/sourcetx-release.jks" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_PASSWORD=sourcetxcompanion" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_ALIAS=sourcetx" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_PASSWORD=sourcetxcompanion" >> "$GITHUB_ENV"
           else
             echo "Generating release signing keystore."
-            keytool -genkey -v -keystore release-keystore.jks -alias sourcetx -keyalg RSA -keysize 2048 -validity 10000 -storepass sourcetx -keypass sourcetx -dname "CN=SourceTX, OU=Mobile, O=SourceTX, L=Global, S=Global, C=US"
+            keytool -genkey -v -keystore release-keystore.jks -alias sourcetx -keyalg RSA -keysize 2048 -validity 10000 -storepass sourcetxcompanion -keypass sourcetxcompanion -dname "CN=SourceTX, OU=Mobile, O=SourceTX, L=Global, S=Global, C=US"
             echo "ANDROID_KEYSTORE_FILE=${{ github.workspace }}/release-keystore.jks" >> "$GITHUB_ENV"
-            echo "ANDROID_KEYSTORE_PASSWORD=sourcetx" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_PASSWORD=sourcetxcompanion" >> "$GITHUB_ENV"
             echo "ANDROID_KEY_ALIAS=sourcetx" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_PASSWORD=sourcetx" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_PASSWORD=sourcetxcompanion" >> "$GITHUB_ENV"
           fi
 
       - name: Test, lint, and build signed release APK

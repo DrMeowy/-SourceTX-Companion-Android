@@ -21,13 +21,18 @@ android {
     }
 
     signingConfigs {
-        val keystorePath = System.getenv("ANDROID_KEYSTORE_FILE")
-        if (!keystorePath.isNullOrBlank()) {
+        val keystoreEnv = System.getenv("ANDROID_KEYSTORE_FILE")
+        val repoKeystore = file("../sourcetx-release.jks")
+        val targetKeystore = if (!keystoreEnv.isNullOrBlank() && file(keystoreEnv).exists()) file(keystoreEnv)
+                             else if (repoKeystore.exists()) repoKeystore
+                             else null
+
+        if (targetKeystore != null) {
             create("release") {
-                storeFile = file(keystorePath)
-                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                storeFile = targetKeystore
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "sourcetxcompanion"
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: "sourcetx"
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: "sourcetxcompanion"
                 enableV1Signing = true
                 enableV2Signing = true
                 enableV3Signing = true
