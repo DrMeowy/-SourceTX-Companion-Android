@@ -4,6 +4,10 @@ All notable user-visible changes are recorded here.
 
 ## Unreleased
 
+## 0.2.4 - 2026-08-17
+
+- Updated Report Bug action in bottom status bar to use distinctive red accent styling.
+
 ## 0.2.3 - 2026-08-17
 
 - Fixed ESP32-S3 ROM bootloader synchronization to avoid resetting the chip

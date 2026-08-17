@@ -131,12 +131,12 @@ fun SourceTxStatusBar(
 
             Spacer(modifier = Modifier.width(6.dp))
 
-            // Report a Bug Button (Bottom Right)
+            // Report a Bug Button (Bottom Right - Red Danger Accent)
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(5.dp))
-                    .background(colors.surface)
-                    .border(1.dp, colors.border, RoundedCornerShape(5.dp))
+                    .background(RedDanger.copy(alpha = 0.12f))
+                    .border(1.dp, RedDanger.copy(alpha = 0.40f), RoundedCornerShape(5.dp))
                     .clickable { onReportBug() }
                     .padding(horizontal = 7.dp, vertical = 4.dp),
                 contentAlignment = Alignment.Center
@@ -145,15 +145,15 @@ fun SourceTxStatusBar(
                     Icon(
                         imageVector = Icons.Default.BugReport,
                         contentDescription = "Report Bug",
-                        tint = colors.textSecondary,
+                        tint = RedDanger,
                         modifier = Modifier.size(12.dp)
                     )
                     Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = "Report Bug",
-                        color = colors.textSecondary,
+                        color = RedDanger,
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.Normal
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
