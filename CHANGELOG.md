@@ -4,6 +4,11 @@ All notable user-visible changes are recorded here.
 
 ## Unreleased
 
+## 0.2.6 - 2026-08-17
+
+- Enforced permanent in-tree repository signing keystore across all local and CI builds.
+- Fixed ESP32-S3 ROM bootloader sync protocol and streaming SLIP reader.
+
 ## 0.2.5 - 2026-08-17
 
 - Fixed ESP32-S3 bootloader SYNC response validation and continuous SLIP stream
