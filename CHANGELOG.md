@@ -4,6 +4,8 @@ All notable user-visible changes are recorded here.
 
 ## Unreleased
 
+## 0.2.2 - 2026-08-17
+
 - Added interactive hardware pin configuration screen over USB OTG serial,
   allowing direct reading and writing of NVS hardware settings (CRSF single-wire
   UART pin, status LED mode/pins/brightness with WS2812 support, audio buzzer/DFPlayer
