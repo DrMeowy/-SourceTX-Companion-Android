@@ -90,6 +90,7 @@ jobs:
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             echo "Updating existing release ${RELEASE_TAG}..."
             gh release upload "${RELEASE_TAG}" "$APK_PATH" "$APK_PATH.sha256" --clobber
+            gh release edit "${RELEASE_TAG}" --latest
           else
             echo "Creating new release ${RELEASE_TAG}..."
             gh release create "${RELEASE_TAG}" "$APK_PATH" "$APK_PATH.sha256" --generate-notes --latest
