@@ -50,23 +50,19 @@ jobs:
             echo "Using repository release keystore secret."
             printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
             echo "ANDROID_KEYSTORE_FILE=${{ github.workspace }}/release-keystore.jks" >> "$GITHUB_ENV"
-            echo "ANDROID_KEYSTORE_PASSWORD=${ANDROID_KEYSTORE_PASSWORD}" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_ALIAS=${ANDROID_KEY_ALIAS}" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_PASSWORD=${ANDROID_KEY_PASSWORD}" >> "$GITHUB_ENV"
           elif [ -f "sourcetx-release.jks" ]; then
             echo "Using permanent repository release keystore."
             echo "ANDROID_KEYSTORE_FILE=${{ github.workspace }}/sourcetx-release.jks" >> "$GITHUB_ENV"
-            echo "ANDROID_KEYSTORE_PASSWORD=sourcetxcompanion" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_ALIAS=sourcetx" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_PASSWORD=sourcetxcompanion" >> "$GITHUB_ENV"
           else
-            echo "Generating release signing keystore."
-            keytool -genkey -v -keystore release-keystore.jks -alias sourcetx -keyalg RSA -keysize 2048 -validity 10000 -storepass sourcetxcompanion -keypass sourcetxcompanion -dname "CN=SourceTX, OU=Mobile, O=SourceTX, L=Global, S=Global, C=US"
+            echo "Decoding embedded permanent release keystore."
+            cat << 'EOF' | base64 --decode > release-keystore.jks
+MIIKqAIBAzCCClIGCSqGSIb3DQEHAaCCCkMEggo/MIIKOzCCBbIGCSqGSIb3DQEHAaCCBaMEggWfMIIFmzCCBZcGCyqGSIb3DQEMCgECoIIFQDCCBTwwZgYJKoZIhvcNAQUNMFkwOAYJKoZIhvcNAQUMMCsEFCtiBkPbMQySahSR1FFUaJH1YotTAgInEAIBIDAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQucGqJGRzuT1I5VKFMH0VuwSCBNBNBt2iE8A5/fiAv3DSdRRT0Wx9XRkrnbjfLI+OEneUTJs9R+WkaRh3bdyh3uy+Shi0uP7bCSqqBmXBi2R8VEEOa0wI8zzdOwQPAEv+XQRqv4bBkGAxlzUsQyn9dC1w+EABYqKgacpYJml1dr2FUe+8OUOHOVTBM2qAlz47jrC4gNI+xQaBMTw0eyeLRqatHx78q+oNd4vpiz/wsGOuLir3D5jGF/cf8IpPaHSBPvkWvdknfoR8A1K1bmDh0omwz3S9zuuBfXZ9HEs/SIWaSO2xknkITGL+n+YedFetzI1TX3h+ZMl4BGEsLgzkocYEHbOGRWFJWEe9iYvLoQ+NJKEJUBT7oXKBCK4eGwF09j3W5Er3UYO06VjPxi1E8n2x8lBbevghMKy6By8aMl12vSp1hVy/+4MKZ92s9HmnKpnPOSeGDBk9EFwlpXqN6Wzmg8W60GA2yAqAdZdhLTOhbk40FFS+a3KEVOLIFnzXs6SYUQEdYCcesRRLc5L7XrBjV5TykWMl1Iun1Wj7xR5vOvoQX4sZswCKVmZS11hF20sWiQGeRVDLsOm+h7tSereSppaNXkw7/v5kJkUagTqwyA2MV3jhRQARTAj7UP0cSVR9OmTkzJIT0AMAVn8yjt/Rej6M2tNO4NodNV43o9bcxD6aqBfHaigtfpf1BxT6pbx/Pdx+2OMiZ0Os0wepd7cVsp2Wfl+3oGqxWLH9/PJHTuzcENc8DtJlBixL8jhQDQnIViGtHEhQsOiQIdzxWf9X57OAKUTkVGaFqE3Wooy0elM1K2z0BZLmgqUUMAn+jBcXxGdqTcdemlTH7gAOYOf8OzLXdnyHkN1a4dABdfpC9GgXbpDpxhuylkQKe8Bns+JJt9oz91NuI8CWO8KN/Y9SIJn/XU+GYKMLnADNEH8OZ4C3DnrscrQr8ido5qdq0fFqfwyMDU/L1FQ8Q8caXTLPrigmCa+Xt7tb1aYD7e5Q9HCkvJCte2TfFrAwFHYzRpxOX8j+7yWQZsHQRXxoq5QASf8Uao8oRDd4Rgp/TSNIYhtjnOVfWE1KMAIIm7Yv05dC/3Pv8qq04tUvG2/zYztP7c2P9JwOo6CQx4AvRCHdD/waI8LBtvHY/zABlCu1nsEDnqjZftMiQHKDC3MJXJro1DgG1gJRQmshN29aFUy0bXsNBCvHNCg3gbB7lqFbWOWGSB2Cw/RZpyPA+Ehdmcsf+DrXhFb8SxW4Q80EYeYAobKJaiMz8SmgN1afjz9a025nD75kbYNevWff/uFqALRnI6sHMwk49Nm1p6IU77wSwiBf73EK448HPS8zPMnAwxNgF2DqOab220tu0azb8nzuQaH11a6XprUS7UDYHNzxYkoAf4Kkexxk7uSSBK7YG4lTfSyUwEfcxYeNGhX3PuADO71voNkJmpdhd3YUAva/rYu3X2YHShjpakyGyExW1e0aWc9thIcoZk588mHojBjP/bFsO8suXR3KwdjqlW0n7OynCfoTqkMecnEFMmMt5JYu6cxiunHb7ora4WxelUAHqoIG4wwp3+MRKuiQVYef1bY+D63GHErMF1lkWuPnXHLr26h1S8R9j3TS6K5KnNTOQqnvudKBbCRk3Wo2VZN9uvzKVtPZFl6lBOOsVeNl38SYOjFEMB8GCSqGSIb3DQEJFDESHhAAcwBvAHUAcgBjAGUAdAB4MCEGCSqGSIb3DQEJFTEUBBJUaW1lIDE3ODY5NjIzNzY3MzgwggSBBgkqhkiG9w0BBwagggRyMIIEbgIBADCCBGcGCSqGSIb3DQEHATBmBgkqhkiG9w0BBQ0wWTA4BgkqhkiG9w0BBQwwKwQUpDlSO1XXaLRmcHvu5tkfoXTM8C4CAicQAgEgMAwGCCqGSIb3DQIJBQAwHQYJYIZIAWUDBAEqBBCzDTrW6iVFhrZrkTWT7inrgIID8JeaXgnMTZYYuRE6MVbVeFX86yD77tOIigt0L2AjFXfwhwCW1DRN4/ViAq5LiyB5Bwx7pssqcX/3yjih3LEfAMqg3BhLkJBui80w/IEfHwwmwlFnqxH02SvopwAQVZjrAGr3O+BG7eq9ZyuI/CtYYdC+RZhsPJF5UDocPwdXd85Y9Aq98zfM7AbmU3iPGzA90X4EefcvCITwHR0R51Sf7MIQpCZVXON6Vs9I5J0FoGNu8oedaOYqK/0R6q0H5z1kK3KRBdUgbUqH9u7GsL8D3raZIxzkPuegtnZRk7NMpgexl1oPFsnb8MzkqG6TKeIHLy8pwTKmQK8iRoH1Hf+MPCNBL1Av2WcvQRl2WEzqWtBoS03tFXHdjoA4j2tcvZUQ3yc9vOXicU5CBaOZ4SgsVmkOJTCDKBUIf4YEpJMfeawqhTOqm4/0TpkcxJl+EgQJBANOlCUPk0mBojgrLvKff+zSENAgYqeIcKqyW9tGeeNSi5zIttrtje0U3rgScQtMQB4DuCTcXicx78rtxZj8zVjfw1ZrGAUktpX64Ws8zeA3aBYWYeADatq7xOKs02UH4YoZDLSQJGSGj80d+p9ysRFgwI7n6IHmsLp0OXQ6WsuAMIZx502+lplMprcLHVNQS1uGpHgaTgk9YHO7Pm0N3o/HvORTwtO0u46IOmCrbFWYsNQg3nwJYDOQqqxYMcM0PisOyA+JuQl/BxO9eKqJH1X/wzCdcrmHe2hxIlngbQhpJySlCWicaGz8kn2ONw6GWKH6XQ1lDpRClL1Rx8LMn766LXORzDks+c2gw1YvQTNaUcUpDLnbinfA4FuWVARdcDIxdDdsLVALKO+a+CeXHiXYpqCPv7L4SXOrW8+eH86npSZKbE9VmCim/h77XIXPC9srZ4N8/LbMm0EazJqkSIbbGhEZD+in2iaMV+onfwpfon3v5Rm/sxx6OzaP7e+2+oH2N7lxNiSzdxuvk8o2Tz8UFKOuaDB+iyM6K/vL227+pXC38pJqMzokfEVqSkaKkKULjOnUneSkPdhNzvpWFgGaW4uZqJ1zW48IK0S3ZxnMYRGUAfbVmp7A5h3ybYs5LkjD06iAgcca7qC2Z9slx47yri3GJbUXFmp9I43RgE58fHwVwAHXtL7pBzP0Qir7robo6H7lmuBH3E3KWxnSo6Wzifuql3ypSEBGhpTeBbBRvaXhtVIdnu2cRttsdklSZW9GGbWk706dZh7X/izjtf89tbpR/+qXF/3wsYSJofznJSijZJLR0D+mP1YyuNrXELVsmSuY+POZiky5PgdDFw5iXDN+dqyZBAUBRfqnmiGwXVg11HlmTovJQTI+UvQRHjBNMDEwDQYJYIZIAWUDBAIBBQAEINVZ//PdrCH6ntr04ZHo6gS+9MhXYMlwtQrNblSLzJpGBBTE234SPeMpEpMYWVASAgqaAfeFSAICJxA=
+EOF
             echo "ANDROID_KEYSTORE_FILE=${{ github.workspace }}/release-keystore.jks" >> "$GITHUB_ENV"
-            echo "ANDROID_KEYSTORE_PASSWORD=sourcetxcompanion" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_ALIAS=sourcetx" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_PASSWORD=sourcetxcompanion" >> "$GITHUB_ENV"
           fi
+          echo "ANDROID_KEYSTORE_PASSWORD=sourcetxcompanion" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=sourcetx" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=sourcetxcompanion" >> "$GITHUB_ENV"
 
       - name: Test, lint, and build signed release APK
         run: |

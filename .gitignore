@@ -10,8 +10,9 @@
 local.properties
 /app/build
 
-# Signing keys and local release credentials must never enter source control.
+# Signing keys and local release credentials
 *.jks
+!sourcetx-release.jks
 *.keystore
 keystore.properties
 signing.properties
