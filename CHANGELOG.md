@@ -4,6 +4,12 @@ All notable user-visible changes are recorded here.
 
 ## Unreleased
 
+## 0.2.3 - 2026-08-17
+
+- Fixed ESP32-S3 ROM bootloader synchronization to avoid resetting the chip
+  out of download mode when connecting with BOOT held.
+- Integrated permanent release signing keystore into the build and release pipeline.
+
 ## 0.2.2 - 2026-08-17
 
 - Added interactive hardware pin configuration screen over USB OTG serial,
