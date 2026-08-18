@@ -11,8 +11,8 @@ android {
         applicationId = "com.sourcetx.companion"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "0.2.7"
+        versionCode = 14
+        versionName = "0.2.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

@@ -8,11 +8,13 @@ import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,9 +72,19 @@ class SourceTxUsbManager(private val context: Context) {
                     scanDevices()
                 }
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
-                    disconnect()
-                    _connectedDevice.value = null
-                    _hasPermission.value = false
+                    val detachedDevice: UsbDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                    }
+                    // Only disconnect if the detached device is our currently active device (or device not specified)
+                    if (detachedDevice == null || detachedDevice.deviceId == activeDriver?.device?.deviceId) {
+                        disconnect()
+                        _connectedDevice.value = null
+                        _hasPermission.value = false
+                        scanDevices()
+                    }
                 }
             }
         }
@@ -108,9 +120,13 @@ class SourceTxUsbManager(private val context: Context) {
         }
         val availableDrivers = UsbSerialProber(probeTable).findAllDrivers(usbManager)
         if (availableDrivers.isNotEmpty()) {
+            // Prioritize native ESP32-S3 USB-Serial/JTAG (VID 303A, PID 1001), then other Espressif devices
             val driver = availableDrivers.sortedWith(
-                compareByDescending<UsbSerialDriver> { it.device.vendorId == ESPRESSIF_VID }
-                    .thenBy { it.device.deviceId }
+                compareByDescending<UsbSerialDriver> {
+                    it.device.vendorId == ESPRESSIF_VID && it.device.productId == ESPRESSIF_USB_SERIAL_JTAG_PID
+                }
+                .thenByDescending { it.device.vendorId == ESPRESSIF_VID }
+                .thenBy { it.device.deviceId }
             ).first()
             val device = driver.device
             activeDriver = driver
@@ -186,5 +202,24 @@ class SourceTxUsbManager(private val context: Context) {
             activePort?.close()
         } catch (_: Exception) {}
         activePort = null
+    }
+
+    /**
+     * Attempts to reacquire and open the native ESP32-S3 USB port after an expected
+     * reset/re-enumeration cycle.
+     */
+    suspend fun reacquirePort(
+        timeoutMs: Long = 4_000,
+        baudRate: Int = 115200,
+        requireEspressif: Boolean = true
+    ): UsbSerialPort? {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        while (SystemClock.elapsedRealtime() < deadline) {
+            scanDevices()
+            val port = openPort(baudRate, requireEspressif)
+            if (port != null) return port
+            delay(150)
+        }
+        return null
     }
 }

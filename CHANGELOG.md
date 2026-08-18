@@ -4,6 +4,14 @@ All notable user-visible changes are recorded here.
 
 ## Unreleased
 
+## 0.2.8 - 2026-08-19
+
+- Hardened USB device detachment handling to ignore unrelated USB peripherals and added port reacquisition support.
+- Enforced strict response length and status verification across all ROM bootloader commands.
+- Prioritized exact native USB-Serial/JTAG device (VID 303A, PID 1001) during multi-device scanning.
+- Switched all timeout deadline calculations to monotonic SystemClock.elapsedRealtime().
+- Clarified post-flash messaging to accurately state that the restart command was sent.
+
 ## 0.2.7 - 2026-08-19
 
 - Implemented ESP32-S3 native USB-Serial/JTAG (303A:1001) automatic download mode reset sequence.

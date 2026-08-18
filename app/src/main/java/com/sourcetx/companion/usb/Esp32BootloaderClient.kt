@@ -1,5 +1,6 @@
 package com.sourcetx.companion.usb
 
+import android.os.SystemClock
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -99,14 +100,14 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
                 onStatus("Sending chip erase command...")
                 runSpiFlashCommand(0x06)
                 runSpiFlashCommand(0xC7)
-                val deadline = System.currentTimeMillis() + 180_000L
+                val deadline = SystemClock.elapsedRealtime() + 180_000L
                 do {
                     delay(250)
                     if (runSpiFlashCommand(0x05, readBits = 8) and 0x01L == 0L) {
                         onStatus("Flash erase completed.")
                         return@runCatching
                     }
-                } while (System.currentTimeMillis() < deadline)
+                } while (SystemClock.elapsedRealtime() < deadline)
                 throw IOException("Full flash erase timed out.")
             }
         }
@@ -346,9 +347,9 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
         timeoutMs: Long
     ): CommandResponse {
         sendRequest(opcode, payload, checksum)
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            val packet = readSlipPacket((deadline - System.currentTimeMillis()).coerceAtLeast(1)) ?: continue
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val packet = readSlipPacket((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1)) ?: continue
             if (packet.size < 8) continue
             val header = ByteBuffer.wrap(packet, 0, 8).order(ByteOrder.LITTLE_ENDIAN)
             val direction = header.get().toInt() and 0xFF
@@ -361,16 +362,20 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
 
             val data = if (packet.size > 8) packet.copyOfRange(8, packet.size) else ByteArray(0)
 
-            if (checkStatus && data.size >= 2) {
-                val statusIndex = if (data.size >= responseDataLength + 2) responseDataLength else 0
-                val status = data[statusIndex].toInt() and 0xFF
-                val reason = data[statusIndex + 1].toInt() and 0xFF
+            if (checkStatus) {
+                if (data.size < responseDataLength + 2) {
+                    throw IOException(
+                        "ESP32-S3 returned an incomplete response for command 0x${opcode.toString(16)} (expected at least ${responseDataLength + 2} bytes, got ${data.size})."
+                    )
+                }
+                val status = data[responseDataLength].toInt() and 0xFF
+                val reason = data[responseDataLength + 1].toInt() and 0xFF
                 if (status != 0) {
                     throw IOException("ESP32-S3 rejected command 0x${opcode.toString(16)} (status $status, reason $reason).")
                 }
             }
 
-            val returnData = if (responseDataLength > 0 && data.size >= responseDataLength) {
+            val returnData = if (responseDataLength > 0) {
                 data.copyOfRange(0, responseDataLength)
             } else {
                 data
@@ -411,10 +416,10 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
     }
 
     private fun readSlipPacket(timeoutMs: Long): ByteArray? {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        while (SystemClock.elapsedRealtime() < deadline) {
             if (rxOffset >= rxLength) {
-                val remaining = (deadline - System.currentTimeMillis()).coerceIn(1, 100).toInt()
+                val remaining = (deadline - SystemClock.elapsedRealtime()).coerceIn(1, 100).toInt()
                 rxOffset = 0
                 rxLength = try {
                     port.read(rxBuffer, remaining)

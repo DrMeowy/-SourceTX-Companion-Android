@@ -226,16 +226,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }.getOrThrow()
                 log("[VERIFY] ESP32-S3 flash MD5 matches the signed firmware package.")
                 _flashPercent.value = 98
-                _flashStatusText.value = "Restarting the transmitter..."
+                _flashStatusText.value = "Sending restart command..."
                 flasher.reboot().getOrThrow()
                 _flashPercent.value = 100
                 _flashStatusText.value = if (factory) "Installation complete" else "Update complete"
                 _flashSuccessMessage.value = if (factory) {
-                    "SourceTX v${firmwarePackage.manifest.version} was installed and verified."
+                    "SourceTX v${firmwarePackage.manifest.version} was installed and verified. Restart command sent."
                 } else {
-                    "SourceTX v${firmwarePackage.manifest.version} was updated and verified. Saved models were preserved."
+                    "SourceTX v${firmwarePackage.manifest.version} was updated and verified. Restart command sent."
                 }
-                log("[SUCCESS] Firmware write, on-device verification, and restart completed.")
+                log("[SUCCESS] Firmware write and on-device MD5 verification completed. Restart command sent.")
             } catch (error: Throwable) {
                 val message = error.message ?: "Unknown firmware operation error."
                 _flashErrorMessage.value = message
