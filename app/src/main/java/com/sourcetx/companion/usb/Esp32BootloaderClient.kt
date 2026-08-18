@@ -187,18 +187,11 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
 
     suspend fun reboot(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            command(ESP_FLASH_END, littleEndianInts(0), checkStatus = false, timeoutMs = 2_000)
-            Unit
-        }.recoverCatching {
-            // Some USB/JTAG transports disappear before delivering the ROM
-            // response. A reset pulse is safe after successful MD5 verification.
-            try {
-                port.dtr = false
-                port.rts = true
-                delay(100)
-                port.rts = false
-                port.dtr = false
-            } catch (_: Exception) {}
+            // Send the flash end / reboot command directly without waiting for a ROM response.
+            // On native USB-Serial/JTAG, starting the application causes the USB link to
+            // re-enumerate immediately before a reply can be delivered.
+            sendRequest(ESP_FLASH_END, littleEndianInts(0), 0)
+            delay(250)
             Unit
         }
     }
@@ -211,8 +204,7 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
             this[3] = 0x20
         }
 
-        // 1. Direct Sync: If user already held BOOT while connecting USB,
-        // the ESP32-S3 ROM bootloader is already active. Do NOT reset immediately!
+        // 1. Direct Sync: If the chip is already in download mode, connect immediately.
         drain()
         for (i in 0 until 8) {
             try {
@@ -226,15 +218,26 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
             }
         }
 
-        // 2. Hardware auto-reset into download mode (for boards with DTR/RTS EN/IO0 circuit)
+        // 2. ESP32-S3 native USB-Serial/JTAG (303A:1001) reset sequence into ROM download mode.
+        // Serial-line states: true = asserted, false = deasserted.
+        // The repeated RTS assertion is the standard native USB-JTAG reset pattern.
         try {
-            port.dtr = true  // Assert IO0 LOW (BOOT button state)
-            port.rts = true  // Assert EN LOW (Reset active)
+            port.rts = false
+            port.dtr = false
             delay(100)
-            port.rts = false // Release EN (chip boots into ROM download mode with IO0 LOW)
+
+            port.dtr = true
+            port.rts = false
             delay(100)
-            port.dtr = false // Release IO0
-            delay(150)
+
+            port.rts = true
+            port.dtr = false
+            port.rts = true
+            delay(100)
+
+            port.dtr = false
+            port.rts = false
+            delay(100)
         } catch (_: Exception) {}
         drain()
 
@@ -253,7 +256,7 @@ class Esp32BootloaderClient(private val port: UsbSerialPort) {
             }
         }
         throw IOException(
-            "ESP32-S3 bootloader did not respond. Hold BOOT while connecting USB, then try again.",
+            "ESP32-S3 bootloader did not respond after native USB auto-reset. Reconnect USB and try again; only use BOOT manually if the running firmware disabled native USB.",
             lastFailure
         )
     }

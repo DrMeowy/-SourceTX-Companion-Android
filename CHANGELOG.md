@@ -4,6 +4,13 @@ All notable user-visible changes are recorded here.
 
 ## Unreleased
 
+## 0.2.7 - 2026-08-19
+
+- Implemented ESP32-S3 native USB-Serial/JTAG (303A:1001) automatic download mode reset sequence.
+- Streamlined post-flash reboot to directly issue ESP_FLASH_END without hanging on immediate USB re-enumeration.
+- Restricted flashing port selection strictly to Espressif native USB-Serial/JTAG (VID 303A, PID 1001).
+- Clarified bootloader error prompt to indicate manual BOOT as fallback only.
+
 ## 0.2.6 - 2026-08-17
 
 - Enforced permanent in-tree repository signing keystore across all local and CI builds.

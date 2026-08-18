@@ -159,7 +159,11 @@ class SourceTxUsbManager(private val context: Context) {
 
     fun openPort(baudRate: Int = 115200, requireEspressif: Boolean = false): UsbSerialPort? {
         val driver = activeDriver ?: return null
-        if (requireEspressif && driver.device.vendorId != ESPRESSIF_VID) return null
+        if (requireEspressif && (
+                driver.device.vendorId != ESPRESSIF_VID ||
+                driver.device.productId != ESPRESSIF_USB_SERIAL_JTAG_PID
+            )
+        ) return null
         if (!usbManager.hasPermission(driver.device)) return null
         disconnect()
         val port = driver.ports.firstOrNull() ?: return null
